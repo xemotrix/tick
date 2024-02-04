@@ -1,4 +1,5 @@
 _build/*
 *.o
 *.ll
+*.s
 output

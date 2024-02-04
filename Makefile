@@ -4,11 +4,10 @@ build:
 build_bin:
 	@./scripts/build_bin.sh
 
-build_fibonacci:
+build_fibonacci: build
 	@./_build/default/bin/main.exe examples/fibonacci.tick
-	@./scripts/build_bin.sh
 
-run_fibonacci: build_fibonacci
+run_fibonacci: build_fibonacci build_bin
 	@./output
 
 build_asm:
