@@ -1,0 +1,12 @@
+def fib(n) {
+    if n > 1 {
+      let a = fib(n-2);
+      let b = fib(n-1);
+      return a+b;
+    }
+    return n;
+}
+
+print fib(20);
+
+return 0;
