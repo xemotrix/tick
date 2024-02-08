@@ -7,6 +7,7 @@ type t =
   | Extern
   | Return
   | If
+  | Else
   (* Symbols *)
   | Scln
   | Comma

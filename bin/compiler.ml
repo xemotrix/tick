@@ -55,6 +55,7 @@ and compile_stmt (builder : llbuilder) (stmt : Ast.statement) : llvalue =
     position_at_end then_bb builder;
     compile_block builder block |> ignore;
     let cont_bb = append_block the_context "ifcont" parent in
+    build_br cont_bb builder |> ignore;
     position_at_end start_bb builder;
     build_cond_br cond_value then_bb cont_bb builder |> ignore;
     position_at_end cont_bb builder;

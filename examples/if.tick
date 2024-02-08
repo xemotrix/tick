@@ -1,0 +1,10 @@
+
+//if 1<2 {
+//    print 42;
+//}
+let a = 1;
+let b = 2;
+if a > b {
+    print a;
+}
+return 0;
