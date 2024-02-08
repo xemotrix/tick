@@ -18,7 +18,6 @@ let write_ir modu =
   dump_module modu;
   let ir = Llvm.string_of_llmodule modu in
   Out_channel.write_all "output.ll" ~data:ir;
-  (* let _ = Llvm_bitwriter.write_bitcode_file modu "output.o" in *)
   ()
 ;;
 

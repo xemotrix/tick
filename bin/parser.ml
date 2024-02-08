@@ -125,7 +125,7 @@ and assign : Ast.statement Parser.t =
 
 and fundef : Ast.statement Parser.t =
   fun ts ->
-  (consume Token.Def
+  (consume Token.Fun
    &> identifier
    <& consume Token.LParen
    <&> some identifier

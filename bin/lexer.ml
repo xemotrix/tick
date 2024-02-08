@@ -70,7 +70,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
         | Some num, rest -> rest, num :: tokens)
      | c when Char.is_alpha c ->
        (match get_iden input with
-        | "def", rest -> rest, Def :: tokens
+        | "fun", rest -> rest, Fun :: tokens
         | "extern", rest -> rest, Extern :: tokens
         | "if", rest -> rest, If :: tokens
         | "let", rest -> rest, Let :: tokens

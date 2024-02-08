@@ -1,7 +1,7 @@
 type t =
   | Eof
   (* Keywords *)
-  | Def
+  | Fun
   | Let
   | Print
   | Extern
