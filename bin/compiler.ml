@@ -47,7 +47,9 @@ and compile_stmt (builder : llbuilder) (stmt : Ast.statement) : llvalue =
     let value = compile_expr builder expr in
     let print_int = build_global_stringptr "%d\n" "int_printer" builder in
     build_call printf [| print_int; value |] "" builder
-  | Ast.If (expr, block) ->
+  (* | Ast.If (expr, block) -> *)
+  | Ast.If if_blocks ->
+    let expr, block = List.nth_exn if_blocks 0 in
     let cond_value = compile_expr builder expr in
     let start_bb = insertion_block builder in
     let parent = block_parent start_bb in

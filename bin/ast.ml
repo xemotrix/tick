@@ -28,7 +28,7 @@ and expression =
 type statement =
   | Assign of string * expression
   | FunDef of string * string list * block
-  | If of expression * block
+  | If of (expression * block) list
   | Return of expression
   | Print of expression
 [@@deriving show, sexp]
@@ -62,7 +62,7 @@ let term t = Term t
 let assign (s, e) = Assign (s, e)
 let print e = Print e
 let return e = Return e
-let if_stmt (e, block) = If (e, block)
+let if_stmt bs = If bs
 
 let fun_def ((s, args), b) =
   print_endline (s ^ " " ^ String.concat " " args);

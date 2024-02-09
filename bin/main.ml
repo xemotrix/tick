@@ -6,7 +6,7 @@ let compile source =
   match source |> Lexer.lex |> Parser.parse with
   | None -> print_endline "Failed to parse"
   | Some (ast, tokens) ->
-    (* Ast.sexp_of_root ast |> Sexp.to_string_hum |> print_endline; *)
+    Ast.sexp_of_root ast |> Sexp.to_string_hum |> print_endline;
     (match tokens with
      | [ Token.Eof ] -> ()
      | _ ->

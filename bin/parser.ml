@@ -37,11 +37,45 @@ module Parser = struct
     | None -> None
   ;;
 
+  let ignore (parser : 'a t) (other : unit t) : 'a t =
+    fun ts ->
+    match and_then parser other ts with
+    | Some ((x, _), rest) -> Some (x, rest)
+    | None -> None
+  ;;
+
   let map (parser : 'a t) ~(f : 'a -> 'b) : 'b t =
     fun ts ->
     match parser ts with
     | Some (result, rest) -> Some (f result, rest)
     | None -> None
+  ;;
+
+  let merge (parser : 'a t) (other : 'a t) : 'a list t =
+    fun ts ->
+    match parser ts with
+    | Some (result, rest) ->
+      (match other rest with
+       | Some (result', rest) -> Some ([ result'; result ], rest)
+       | None -> None)
+    | None -> None
+  ;;
+
+  let bind (parser : 'a list t) (other : 'a t) : 'a list t =
+    fun ts ->
+    match parser ts with
+    | Some (result, rest) ->
+      (match other rest with
+       | Some (result', rest') -> Some (result' :: result, rest')
+       | None -> None)
+    | None -> None
+  ;;
+
+  let maybe (parser : 'a t) : 'a option t =
+    fun ts ->
+    match parser ts with
+    | Some (result, rest) -> Some (Some result, rest)
+    | None -> Some (None, ts)
   ;;
 
   let some (parser : 'a t) : 'a list t =
@@ -59,6 +93,9 @@ module Parser = struct
   let ( &> ) = lignore
   let ( <& ) = rignore
   let ( >>| ) a f = map a ~f
+  let ( >>= ) a f = bind a f
+  let ( =<< ) = Fn.flip bind
+  let ( <&< ) a b = merge a b
 end
 
 include Parser
@@ -141,13 +178,20 @@ and print : Ast.statement Parser.t =
 
 and if_stmt : Ast.statement Parser.t =
   fun ts ->
-  (consume Token.If
-   &> expr
-   <& consume Token.LBrace
-   <&> block
-   <& consume Token.RBrace
-   >>| Ast.if_stmt)
-    ts
+  let basic_if =
+    consume Token.If &> expr <& consume Token.LBrace <&> block <& consume Token.RBrace
+  in
+  let else_if =
+    consume Token.Else
+    &> consume Token.If
+    &> expr
+    <& consume Token.LBrace
+    <&> block
+    <& consume Token.RBrace
+  in
+  let elses = maybe @@ some else_if in
+  let x = basic_if =<< elses in
+  (x >>| Ast.if_stmt) ts
 
 and return : Ast.statement Parser.t =
   consume Token.Return &> expr <& consume Token.Scln >>| Ast.return
