@@ -181,17 +181,7 @@ and if_stmt : Ast.statement Parser.t =
   let basic_if =
     consume Token.If &> expr <& consume Token.LBrace <&> block <& consume Token.RBrace
   in
-  let else_if =
-    consume Token.Else
-    &> consume Token.If
-    &> expr
-    <& consume Token.LBrace
-    <&> block
-    <& consume Token.RBrace
-  in
-  let elses = maybe @@ some else_if in
-  let x = basic_if =<< elses in
-  (x >>| Ast.if_stmt) ts
+  (basic_if >>| Ast.if_stmt) ts
 
 and return : Ast.statement Parser.t =
   consume Token.Return &> expr <& consume Token.Scln >>| Ast.return
