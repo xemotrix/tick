@@ -1,17 +1,23 @@
 open Core
+open Tick
 
-let pp tokens = List.iter tokens ~f:(fun token -> print_endline @@ Token.show token)
+let pp tokens =
+  List.iter tokens ~f:(fun token -> print_endline @@ Token.show token);
+  tokens
+;;
 
 let compile source =
-  match source |> Lexer.lex |> Parser.parse with
+  match source |> Lexer.lex |> pp |> Parser.parse with
   | None -> print_endline "Failed to parse"
   | Some (ast, tokens) ->
+    print_endline "\nAST:";
     Ast.sexp_of_root ast |> Sexp.to_string_hum |> print_endline;
     (match tokens with
      | [ Token.Eof ] -> ()
      | _ ->
-       print_endline "Tokens left unparsed";
-       pp tokens);
+       print_endline "\nUNPARSED TOKENS:";
+       pp tokens |> ignore);
+    print_endline "\nIR:";
     Compiler.compile ast
 ;;
 

@@ -8,6 +8,8 @@ type t =
   | Return
   | If
   | Else
+  | True
+  | False
   (* Symbols *)
   | Scln
   | Comma

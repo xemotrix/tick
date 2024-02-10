@@ -5,6 +5,9 @@
      ppx_deriving.show 
      ppx_deriving.eq 
      ppx_sexp_conv
-     ppx_let))
- (libraries core)
- )
+     ppx_let
+     ppx_variants_conv))
+ (libraries
+   llvm
+   llvm.bitwriter
+   core))
