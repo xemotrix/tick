@@ -1,6 +1,6 @@
 
 
-fun getnum() {
+fun getnum() int {
     return 999;
 }
 

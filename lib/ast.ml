@@ -1,10 +1,16 @@
 open Sexplib.Std
 
+type type' =
+  | Int
+  | Float
+  | Bool
+[@@deriving show, sexp, eq]
+
 type value =
-  | Literal of int
+  | ILiteral of int
+  | FPLiteral of float
   | Var of string
-  | True
-  | False
+  | BoolLiteral of bool
 [@@deriving show, sexp, eq]
 
 and factor =
@@ -16,12 +22,17 @@ and factor =
 and term =
   | Mul of factor * term
   | Div of factor * term
+  | Modulo of factor * term
+  | LogAnd of factor * term
+  | LogOr of factor * term
+  | LogXor of factor * term
   | Factor of factor
 [@@deriving show, sexp, eq]
 
 and expression =
   | Add of term * expression
   | Sub of term * expression
+  | Eq of term * expression
   | Lt of term * expression
   | Gt of term * expression
   | Term of term
@@ -29,7 +40,7 @@ and expression =
 
 type statement =
   | Assign of string * expression
-  | FunDef of string * string list * block
+  | FunDef of string * (string * type') list * block * type'
   | If of (expression * block) list * block option
   | Return of expression
   | Print of expression

@@ -1,10 +1,9 @@
-
-fun lol(n) {
+fun lol(n: int) int {
     if n < 10 {
         let n = n + 1;
         return lol(n);
     }
-    return n*55;
+    return n * 55;
 }
 
 print lol(5);

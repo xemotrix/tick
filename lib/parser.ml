@@ -61,8 +61,19 @@ open Combinators
 
 (* Tick parsing *)
 (* ------------ *)
-let number : int Parser.t = function
-  | Token.Number n :: rest -> Some (n, rest)
+let number_int : int Parser.t = function
+  | Token.IntLiteral n :: rest -> Some (n, rest)
+  | _ -> None
+;;
+
+let number_float : float Parser.t = function
+  | Token.FloatLiteral n :: rest -> Some (n, rest)
+  | _ -> None
+;;
+
+let bool' : bool Parser.t = function
+  | Token.True :: rest -> Some (true, rest)
+  | Token.False :: rest -> Some (false, rest)
   | _ -> None
 ;;
 
@@ -71,8 +82,18 @@ let identifier : string Parser.t = function
   | _ -> None
 ;;
 
+let type' : Ast.type' Parser.t = function
+  | Token.Int :: rest -> Some (Ast.Int, rest)
+  | Token.Float :: rest -> Some (Ast.Float, rest)
+  | Token.Bool :: rest -> Some (Ast.Bool, rest)
+  | _ -> None
+;;
+
 let value : Ast.value Parser.t =
-  let literal = number >>| fun n -> Ast.Literal n in
+  let int' = number_int >>| fun n -> Ast.ILiteral n in
+  let float' = number_float >>| fun n -> Ast.FPLiteral n in
+  let bool' = bool' >>| fun b -> Ast.BoolLiteral b in
+  let literal = bool' <|> int' <|> float' in
   let identifier = identifier >>| fun i -> Ast.Var i in
   literal <|> identifier
 ;;
@@ -92,8 +113,32 @@ let rec term ts =
     let%bind t = term in
     return (Ast.Div (f, t))
   in
+  let mod' =
+    let%bind f = factor in
+    let%bind _ = token Token.Modulo in
+    let%bind t = term in
+    return (Ast.Modulo (f, t))
+  in
+  let or' =
+    let%bind f = factor in
+    let%bind _ = token Token.LogOr in
+    let%bind t = term in
+    return (Ast.LogOr (f, t))
+  in
+  let and' =
+    let%bind f = factor in
+    let%bind _ = token Token.LogAnd in
+    let%bind t = term in
+    return (Ast.LogAnd (f, t))
+  in
+  let xor' =
+    let%bind f = factor in
+    let%bind _ = token Token.LogXor in
+    let%bind t = term in
+    return (Ast.LogXor (f, t))
+  in
   let factor = factor >>| fun f -> Ast.Factor f in
-  mul <|> div <|> factor
+  or' <|> and' <|> xor' <|> mod' <|> mul <|> div <|> factor
 
 and expr ts =
   ts
@@ -110,6 +155,12 @@ and expr ts =
     let%bind e = expr in
     return (Ast.Sub (t, e))
   in
+  let eq =
+    let%bind t = term in
+    let%bind _ = token Token.EqualsEq in
+    let%bind e = expr in
+    return (Ast.Eq (t, e))
+  in
   let lt =
     let%bind t = term in
     let%bind _ = token Token.Less in
@@ -123,7 +174,7 @@ and expr ts =
     return (Ast.Gt (t, e))
   in
   let term = term >>| fun t -> Ast.Term t in
-  add <|> sub <|> lt <|> gt <|> term
+  eq <|>add <|> sub <|> lt <|> gt <|> term
 
 and factor ts =
   ts
@@ -154,18 +205,26 @@ let assign =
   return @@ Ast.Assign (id, e)
 ;;
 
+let typed_iden =
+  let%bind id = identifier in
+  let%bind _ = token Token.Colon in
+  let%bind t = type' in
+  return (id, t)
+;;
+
 let rec fundef ts =
   ts
   |>
   let%bind _ = token Token.Fun in
   let%bind id = identifier in
   let%bind _ = token Token.LParen in
-  let%bind args = some identifier in
+  let%bind args = some typed_iden in
   let%bind _ = token Token.RParen in
+  let%bind ret_t = type' in
   let%bind _ = token Token.LBrace in
   let%bind body = block in
   let%bind _ = token Token.RBrace in
-  return @@ Ast.FunDef (id, args, body)
+  return @@ Ast.FunDef (id, args, body, ret_t)
 
 and print =
   let%bind _ = token Token.Print in

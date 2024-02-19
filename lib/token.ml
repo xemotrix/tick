@@ -10,14 +10,22 @@ type t =
   | Else
   | True
   | False
+  (* Types *)
+  | Int
+  | Float
+  | Bool
   (* Symbols *)
+  (* Punctuation *)
+  | Colon
   | Scln
   | Comma
+  (* Grouping *)
   | LBrace
   | RBrace
   | LParen
   | RParen
   | Equals
+  (* Binops *)
   | EqualsEq
   | Plus
   | Minus
@@ -27,7 +35,12 @@ type t =
   | LessEq
   | Greater
   | GreaterEq
+  | LogAnd
+  | LogOr
+  | LogXor
+  | Modulo
   (* Values *)
   | Identifier of string
-  | Number of int
+  | IntLiteral of int
+  | FloatLiteral of float
 [@@deriving show, eq]

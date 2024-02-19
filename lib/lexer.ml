@@ -8,12 +8,19 @@ let peek (s : string) : char option =
   if String.length s < 2 then None else Some (String.get s 1)
 ;;
 
-let lex_digit (input : string) : Token.t option * string =
+let lex_number (input : string) : Token.t option * string =
   let open Char in
-  let num_str = String.take_while input ~f:is_digit in
-  match int_of_string_opt num_str with
-  | None -> failwith "Invalid number representation"
-  | Some num -> Some (Number num), String.drop_prefix input (String.length num_str)
+  let num_str = String.take_while input ~f:(fun c -> is_digit c || equal c '.') in
+  if String.contains num_str '.'
+  then (
+    match Float.of_string_opt num_str with
+    | Some num ->
+      Some (FloatLiteral num), String.drop_prefix input (String.length num_str)
+    | None -> failwith "Invalid number representation")
+  else (
+    match int_of_string_opt num_str with
+    | Some num -> Some (IntLiteral num), String.drop_prefix input (String.length num_str)
+    | None -> failwith "Invalid number representation")
 ;;
 
 let advance (input : string) : string = String.drop_prefix input 1
@@ -35,6 +42,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
     (match String.get input 0 with
      | c when Char.is_whitespace c -> advance input, tokens
      | ';' -> advance input, Scln :: tokens
+     | ':' -> advance input, Colon :: tokens
      | ',' -> advance input, Comma :: tokens
      | '{' -> advance input, LBrace :: tokens
      | '}' -> advance input, RBrace :: tokens
@@ -43,6 +51,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
      | '+' -> advance input, Plus :: tokens
      | '-' -> advance input, Minus :: tokens
      | '*' -> advance input, Times :: tokens
+     | '%' -> advance input, Modulo :: tokens
      | '/' ->
        (match peek input with
         | Some '/' ->
@@ -65,16 +74,22 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
         | Some '=' -> advance_n input 2, GreaterEq :: tokens
         | _ -> advance input, Greater :: tokens)
      | c when Char.is_digit c ->
-       (match lex_digit input with
+       (match lex_number input with
         | None, _ -> failwith "Invalid number representation"
         | Some num, rest -> rest, num :: tokens)
      | c when Char.is_alpha c ->
        (match get_iden input with
+        | "bool", rest -> rest, Bool :: tokens
         | "else", rest -> rest, Else :: tokens
         | "extern", rest -> rest, Extern :: tokens
+        | "and", rest -> rest, LogAnd :: tokens
+        | "or", rest -> rest, LogOr :: tokens
+        | "xor", rest -> rest, LogXor :: tokens
         | "false", rest -> rest, False :: tokens
+        | "float", rest -> rest, Float :: tokens
         | "fun", rest -> rest, Fun :: tokens
         | "if", rest -> rest, If :: tokens
+        | "int", rest -> rest, Int :: tokens
         | "let", rest -> rest, Let :: tokens
         | "print", rest -> rest, Print :: tokens
         | "return", rest -> rest, Return :: tokens
