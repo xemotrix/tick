@@ -308,4 +308,4 @@ and compile_value (c : Compiler.t) (value : Ast.value) : llvalue * type' =
      | Some v -> v
      | None -> failwith @@ Printf.sprintf "unknown variable name: '%s'" name)
   | Ast.BoolLiteral b -> const_int bool_type (if b then 1 else 0), Bool
-
+;;
