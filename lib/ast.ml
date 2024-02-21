@@ -4,6 +4,7 @@ type type' =
   | Int
   | Float
   | Bool
+  | String
   | Pointer of type'
 [@@deriving show, sexp, eq]
 
@@ -12,6 +13,7 @@ type value =
   | FPLiteral of float
   | Var of string
   | BoolLiteral of bool
+  | StringLiteral of string
 [@@deriving show, sexp, eq]
 
 and factor =

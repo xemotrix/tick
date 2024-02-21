@@ -5,6 +5,7 @@ type type' =
   | Int
   | Float
   | Bool
+  | String
   | Pointer of type'
 [@@deriving show, sexp, eq]
 
@@ -12,6 +13,7 @@ let rec type_of_ast_type = function
   | Ast.Int -> Int
   | Ast.Float -> Float
   | Ast.Bool -> Bool
+  | Ast.String -> String
   | Ast.Pointer t -> Pointer (type_of_ast_type t)
 ;;
 
@@ -64,12 +66,19 @@ let the_builder = builder the_context
 let the_module = create_module the_context "my module"
 
 (* basic types *)
-let int_type = Llvm.i32_type the_context
-let float_type = Llvm.double_type the_context
-let char_type = Llvm.i8_type the_context
+let int_type = i32_type the_context
+let float_type = double_type the_context
+let char_type = i8_type the_context
+let char_ptr_type = pointer_type char_type
 let null_value = const_null int_type
 let fun_type = function_type int_type [||]
 let bool_type = i1_type the_context
+
+let string_type =
+  let str_ty = named_struct_type the_context "String" in
+  Llvm.struct_set_body str_ty [| pointer_type char_type; int_type; int_type |] false;
+  str_ty
+;;
 
 (* type mapping *)
 let rec map_type = function
@@ -77,6 +86,7 @@ let rec map_type = function
   | Float -> float_type
   | Bool -> bool_type
   | Pointer ty -> pointer_type (map_type ty)
+  | String -> string_type
 ;;
 
 type binop =
@@ -96,18 +106,30 @@ type binop =
 let printf_ty = var_arg_function_type int_type [| pointer_type char_type |]
 let printf = declare_function "printf" printf_ty the_module
 let print_int = ref null_value
+let print_i8 = ref null_value
 let print_float = ref null_value
 let print_ptr = ref null_value
+let void = void_type the_context
+let void_ptr = pointer_type void
+
+(* puts *)
+let puts_ty = function_type int_type [| pointer_type char_type |]
+let puts = declare_function "puts" puts_ty the_module
+
+(* memcpy *)
+let memcpy_ty = function_type char_ptr_type [| char_ptr_type; char_ptr_type; int_type |]
+let memcpy = declare_function "memcpy" memcpy_ty the_module
 
 let init_printers builder =
   print_int := build_global_stringptr "%d\n" "int_printer" builder;
+  print_i8 := build_global_stringptr "'%d'\n" "i8_printer" builder;
   print_float := build_global_stringptr "%f\n" "float_printer" builder;
   print_ptr := build_global_stringptr "&(%p)\n" "ptr_printer" builder
 ;;
 
 (* write IR to file *)
 let write_ir modu =
-  dump_module modu;
+  (* dump_module modu; *)
   let ir = Llvm.string_of_llmodule modu in
   Out_channel.write_all "output.ll" ~data:ir;
   ()
@@ -167,6 +189,13 @@ and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
     (match v_t with
      | Int | Bool -> build_call printf [| !print_int; value |] "" c.builder
      | Float -> build_call printf [| !print_float; value |] "" c.builder
+     | String ->
+       let stack_ptr = build_alloca string_type "" c.builder in
+       build_store value stack_ptr c.builder |> ignore;
+       let char_ptr_ptr = build_struct_gep stack_ptr 0 "" c.builder in
+       let char_ptr = build_load char_ptr_ptr "" c.builder in
+       let first_char = build_gep char_ptr [| const_int int_type 0 |] "" c.builder in
+       build_call puts [| first_char |] "" c.builder
      | Pointer _ ->
        Printf.printf "pointer type: %s\n" (Sexp.to_string_hum (sexp_of_type' v_t));
        build_call printf [| !print_ptr; value |] "" c.builder)
@@ -321,6 +350,25 @@ and compile_value (c : Compiler.t) (value : Ast.value) : llvalue * type' =
   match value with
   | Ast.ILiteral n -> const_int int_type n, Int
   | Ast.FPLiteral n -> const_float float_type n, Float
+  | Ast.StringLiteral s ->
+    let len = String.length s in
+    let lllen = const_int int_type len in
+    let string_stack_ptr = build_alloca string_type "" c.builder in
+    let byte_arr_heap_ptr = build_array_malloc char_type lllen "" c.builder in
+    let arr_ptr = build_struct_gep string_stack_ptr 0 "" c.builder in
+    let str_val =
+      let p = build_alloca (array_type char_type len) "" c.builder in
+      build_store (const_string the_context s) p c.builder |> ignore;
+      build_bitcast p char_ptr_type "" c.builder
+    in
+    let str_ptr = build_gep str_val [| const_int int_type 0 |] "" c.builder in
+    build_store byte_arr_heap_ptr arr_ptr c.builder |> ignore;
+    build_call memcpy [| byte_arr_heap_ptr; str_ptr; lllen |] "" c.builder |> ignore;
+    let len_ptr = build_struct_gep string_stack_ptr 1 "" c.builder in
+    build_store lllen len_ptr c.builder |> ignore;
+    let cap_ptr = build_struct_gep string_stack_ptr 2 "" c.builder in
+    build_store lllen cap_ptr c.builder |> ignore;
+    build_load string_stack_ptr "" c.builder, String
   | Ast.Var name ->
     (match Compiler.find_value c name with
      | Some v -> v

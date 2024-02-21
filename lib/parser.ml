@@ -71,6 +71,11 @@ let number_float : float Parser.t = function
   | _ -> None
 ;;
 
+let string' : string Parser.t = function
+  | Token.StringLiteral s :: rest -> Some (s, rest)
+  | _ -> None
+;;
+
 let bool' : bool Parser.t = function
   | Token.True :: rest -> Some (true, rest)
   | Token.False :: rest -> Some (false, rest)
@@ -86,6 +91,7 @@ let rec type' : Ast.type' Parser.t = function
   | Token.Int :: rest -> Some (Ast.Int, rest)
   | Token.Float :: rest -> Some (Ast.Float, rest)
   | Token.Bool :: rest -> Some (Ast.Bool, rest)
+  | Token.String :: rest -> Some (Ast.String, rest)
   | Token.Ref :: rest ->
     let x =
       match type' rest with
@@ -100,7 +106,8 @@ let value : Ast.value Parser.t =
   let int' = number_int >>| fun n -> Ast.ILiteral n in
   let float' = number_float >>| fun n -> Ast.FPLiteral n in
   let bool' = bool' >>| fun b -> Ast.BoolLiteral b in
-  let literal = bool' <|> int' <|> float' in
+  let string' = string' >>| fun s -> Ast.StringLiteral s in
+  let literal = bool' <|> int' <|> float' <|> string' in
   let identifier = identifier >>| fun i -> Ast.Var i in
   literal <|> identifier
 ;;

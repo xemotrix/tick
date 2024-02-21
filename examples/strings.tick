@@ -1,0 +1,10 @@
+fun get_name() string {
+    let str = "some-name"
+    return str
+}
+
+let s = get_name()
+
+print s
+
+return 0

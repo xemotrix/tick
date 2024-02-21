@@ -13,6 +13,7 @@ type t =
   (* Types *)
   | Int
   | Float
+  | String
   | Bool
   (* Symbols *)
   (* Punctuation *)
@@ -46,4 +47,5 @@ type t =
   | Identifier of string
   | IntLiteral of int
   | FloatLiteral of float
+  | StringLiteral of string
 [@@deriving show, eq]

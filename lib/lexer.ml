@@ -35,10 +35,10 @@ let get_iden (input : string) : string * string =
 ;;
 
 let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
-  if String.is_empty input
+  let module S = String in
+  if S.is_empty input
   then Eof :: tokens, ""
   else
-    let module S = String in
     (match String.get input 0 with
      | c when Char.is_whitespace c -> advance input, tokens
      | ';' -> advance input, Scln :: tokens
@@ -74,6 +74,13 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
        (match peek input with
         | Some '=' -> advance_n input 2, GreaterEq :: tokens
         | _ -> advance input, Greater :: tokens)
+     | '"' ->
+       let str =
+         S.take_while (S.drop_prefix input 1) ~f:(fun c -> not @@ Char.equal c '"')
+       in
+       (match S.get input (S.length str + 1) with
+        | '"' -> advance_n input (S.length str + 2), StringLiteral str :: tokens
+        | _ -> failwith "Invalid string literal")
      | c when Char.is_digit c ->
        (match lex_number input with
         | None, _ -> failwith "Invalid number representation"
@@ -94,6 +101,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
         | "print", rest -> rest, Print :: tokens
         | "ref", rest -> rest, Ref :: tokens
         | "return", rest -> rest, Return :: tokens
+        | "string", rest -> rest, String :: tokens
         | "true", rest -> rest, True :: tokens
         | "xor", rest -> rest, LogXor :: tokens
         | iden, rest -> rest, Identifier iden :: tokens)
