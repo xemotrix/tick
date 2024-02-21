@@ -16,30 +16,31 @@ type value =
   | StringLiteral of string
 [@@deriving show, sexp, eq]
 
-type binop =
-  | Mul
-  | Div
-  | Modulo
-  | LogAnd
-  | LogOr
-  | LogXor
-  | Add
-  | Sub
-  | Eq
-  | Lt
-  | Gt
-[@@deriving show, sexp, eq]
-
-type unop =
-  | Deref
-  | Ref
-[@@deriving show, sexp, eq]
-
-type expression =
-  | BinOp of binop * expression * expression
-  | UnOp of unop * expression
+and factor =
+  | Group of expression
   | FunCall of string * expression list
   | Value of value
+  | Ref of factor
+  | Deref of factor
+[@@deriving show, sexp, eq]
+
+and term =
+  | Mul of factor * term
+  | Div of factor * term
+  | Modulo of factor * term
+  | LogAnd of factor * term
+  | LogOr of factor * term
+  | LogXor of factor * term
+  | Factor of factor
+[@@deriving show, sexp, eq]
+
+and expression =
+  | Add of term * expression
+  | Sub of term * expression
+  | Eq of term * expression
+  | Lt of term * expression
+  | Gt of term * expression
+  | Term of term
 [@@deriving show, sexp, eq]
 
 type statement =

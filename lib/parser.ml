@@ -121,13 +121,13 @@ let rec term_binop tok to_ast =
 and term ts =
   ts
   |>
-  let mul = term_binop Token.Times (fun (f, t) -> Ast.Mul (f, t)) in
-  let div = term_binop Token.Divide (fun (f, t) -> Ast.Div (f, t)) in
-  let mod' = term_binop Token.Modulo (fun (f, t) -> Ast.Modulo (f, t)) in
-  let or' = term_binop Token.LogOr (fun (f, t) -> Ast.LogOr (f, t)) in
-  let and' = term_binop Token.LogAnd (fun (f, t) -> Ast.LogAnd (f, t)) in
-  let xor' = term_binop Token.LogXor (fun (f, t) -> Ast.LogXor (f, t)) in
-  let factor = factor >>| fun f -> Ast.Factor f in
+  let mul = term_binop Token.Times (fun (f, t) -> Ast.(BinOp (Mul, f, t))) in
+  let div = term_binop Token.Divide (fun (f, t) -> Ast.(BinOp (Div, f, t))) in
+  let mod' = term_binop Token.Modulo (fun (f, t) -> Ast.(BinOp (Modulo, f, t))) in
+  let or' = term_binop Token.LogOr (fun (f, t) -> Ast.(BinOp (LogOr, f, t))) in
+  let and' = term_binop Token.LogAnd (fun (f, t) -> Ast.(BinOp (LogAnd, f, t))) in
+  let xor' = term_binop Token.LogXor (fun (f, t) -> Ast.(BinOp (LogXor, f, t))) in
+  (* let factor = factor >>| fun f -> Ast.Factor f in *)
   or' <|> and' <|> xor' <|> mod' <|> mul <|> div <|> factor
 
 and expr_binop tok to_ast =
@@ -139,12 +139,12 @@ and expr_binop tok to_ast =
 and expr ts =
   ts
   |>
-  let add = expr_binop Token.Plus (fun (t, e) -> Ast.Add (t, e)) in
-  let sub = expr_binop Token.Minus (fun (t, e) -> Ast.Sub (t, e)) in
-  let eq = expr_binop Token.EqualsEq (fun (t, e) -> Ast.Eq (t, e)) in
-  let lt = expr_binop Token.Less (fun (t, e) -> Ast.Lt (t, e)) in
-  let gt = expr_binop Token.Greater (fun (t, e) -> Ast.Gt (t, e)) in
-  let term = term >>| fun t -> Ast.Term t in
+  let add = expr_binop Token.Plus (fun (t, e) -> Ast.(BinOp (Add, t, e))) in
+  let sub = expr_binop Token.Minus (fun (t, e) -> Ast.(BinOp (Sub, t, e))) in
+  let eq = expr_binop Token.EqualsEq (fun (t, e) -> Ast.(BinOp (Eq, t, e))) in
+  let lt = expr_binop Token.Less (fun (t, e) -> Ast.(BinOp (Lt, t, e))) in
+  let gt = expr_binop Token.Greater (fun (t, e) -> Ast.(BinOp (Gt, t, e))) in
+  (* let term = term >>| fun t -> Ast.Term t in *)
   eq <|> add <|> sub <|> lt <|> gt <|> term
 
 and factor_unaryop tok to_ast =
@@ -159,11 +159,11 @@ and factor ts =
     let%bind _ = token Token.LParen in
     let%bind e = expr in
     let%bind _ = token Token.RParen in
-    return (Ast.Group e)
+    return e
   in
   let value = value >>| fun v -> Ast.Value v in
-  let ref = factor_unaryop Token.Ref (fun t -> Ast.Ref t) in
-  let deref = factor_unaryop Token.Deref (fun t -> Ast.Deref t) in
+  let ref = factor_unaryop Token.Ref (fun t -> Ast.(UnOp (Ref, t))) in
+  let deref = factor_unaryop Token.Deref (fun t -> Ast.(UnOp (Deref, t))) in
   let funcall =
     let%bind id = identifier in
     let%bind _ = token Token.LParen in

@@ -277,43 +277,36 @@ and compile_binop
   | Bool, Bool -> (get_bool_instruction op) lhs rhs "" c.builder, Bool
   | _ -> failwith "type error: invalid binop types"
 
-and expr_to_op = function
-  | Ast.Add _ -> Add
-  | Ast.Sub _ -> Sub
-  | Ast.Eq _ -> Eq
-  | Ast.Lt _ -> Lt
-  | Ast.Gt _ -> Gt
-  | _ -> failwith "invalid expr"
+and binop_expr_to_op = function
+  | Ast.(BinOp (Add, _, _)) -> Add
+  | Ast.(BinOp (Eq, _, _)) -> Eq
+  | Ast.(BinOp (Gt, _, _)) -> Gt
+  | Ast.(BinOp (Lt, _, _)) -> Lt
+  | Ast.(BinOp (Sub, _, _)) -> Sub
+  | Ast.(BinOp (Mul, _, _)) -> Mul
+  | Ast.(BinOp (Div, _, _)) -> Div
+  | Ast.(BinOp (Modulo, _, _)) -> Rem
+  | Ast.(BinOp (LogOr, _, _)) -> LogOr
+  | Ast.(BinOp (LogAnd, _, _)) -> LogAnd
+  | Ast.(BinOp (LogXor, _, _)) -> LogXor
+  | _ -> failwith "invalid binop expr"
 
 and compile_expr (c : Compiler.t) (expr : Ast.expression) : llvalue * type' =
   match expr with
-  | Ast.Add (lhs, rhs)
-  | Ast.Eq (lhs, rhs)
-  | Ast.Gt (lhs, rhs)
-  | Ast.Lt (lhs, rhs)
-  | Ast.Sub (lhs, rhs) ->
-    compile_binop c (compile_term c lhs) (expr_to_op expr) (compile_expr c rhs)
-  | Ast.Term term -> compile_term c term
-
-and term_to_op = function
-  | Ast.Mul _ -> Mul
-  | Ast.Div _ -> Div
-  | Ast.LogOr _ -> LogOr
-  | Ast.LogAnd _ -> LogAnd
-  | Ast.LogXor _ -> LogXor
-  | Ast.Modulo _ -> Rem
-  | _ -> failwith "invalid term"
-
-and compile_term (c : Compiler.t) (term : Ast.term) : llvalue * type' =
-  match term with
-  | Ast.Mul (lhs, rhs)
-  | Ast.Div (lhs, rhs)
-  | Ast.Modulo (lhs, rhs)
-  | Ast.LogOr (lhs, rhs)
-  | Ast.LogAnd (lhs, rhs)
-  | Ast.LogXor (lhs, rhs) ->
-    compile_binop c (compile_factor c lhs) (term_to_op term) (compile_term c rhs)
-  | Ast.Factor factor -> compile_factor c factor
+  | Ast.(BinOp (_, lhs, rhs)) ->
+    compile_binop c (compile_expr c lhs) (binop_expr_to_op expr) (compile_expr c rhs)
+  | Ast.(UnOp (Ref, e)) ->
+    let fv, ft = compile_expr c e in
+    let ptr_ty = Pointer ft in
+    let malloc, ptr_ty = build_malloc (map_type ft) "" c.builder, ptr_ty in
+    build_store fv malloc c.builder |> ignore;
+    malloc, ptr_ty
+  | Ast.(UnOp (Deref, e)) ->
+    (match compile_expr c e with
+     | v, Pointer t -> build_load v "" c.builder, t
+     | _ -> failwith "type error: cannot dereference non-pointer type")
+  | Ast.FunCall (name, args) -> compile_funcall c name args
+  | Ast.Value valu -> compile_value c valu
 
 and compile_funcall (c : Compiler.t) name args : llvalue * type' =
   match Llvm.lookup_function name the_module, Compiler.get_fun_t c name with
@@ -329,22 +322,6 @@ and compile_funcall (c : Compiler.t) name args : llvalue * type' =
       build_call f args "" c.builder, t)
     else failwith @@ Printf.sprintf "incorrect number of arguments in call to '%s'" name
   | _ -> failwith @@ Printf.sprintf "unknown function referenced: '%s'" name
-
-and compile_factor (c : Compiler.t) (factor : Ast.factor) : llvalue * type' =
-  match factor with
-  | Ast.Group exp -> compile_expr c exp
-  | Ast.Value valu -> compile_value c valu
-  | Ast.FunCall (name, args) -> compile_funcall c name args
-  | Ast.Ref f ->
-    let fv, ft = compile_factor c f in
-    let ptr_ty = Pointer ft in
-    let malloc, ptr_ty = build_malloc (map_type ft) "" c.builder, ptr_ty in
-    build_store fv malloc c.builder |> ignore;
-    malloc, ptr_ty
-  | Ast.Deref f ->
-    (match compile_factor c f with
-     | v, Pointer t -> build_load v "" c.builder, t
-     | _ -> failwith "type error: cannot dereference non-pointer type")
 
 and compile_value (c : Compiler.t) (value : Ast.value) : llvalue * type' =
   match value with
