@@ -206,7 +206,7 @@ and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
     let value, _v_t = compile_expr c expr in
     build_ret value c.builder |> ignore;
     c
-  | Ast.FunDef (name, args, body, ret_t) ->
+  | Ast.FunDef (name, args, ret_t, body) ->
     let ret_t = type_of_ast_type ret_t in
     let args_t =
       List.map args ~f:(fun (_, t) ->

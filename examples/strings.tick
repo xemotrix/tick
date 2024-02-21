@@ -1,10 +1,7 @@
-fun get_name() string {
-    let str = "some-name"
-    return str
+fun get_string() string {
+    return "some cool string! 🥹"
 }
 
-let s = get_name()
-
+let s = get_string()
 print s
-
 return 0

@@ -202,7 +202,7 @@ let rec fundef ts =
   let%bind _ = token Token.LBrace in
   let%bind body = block in
   let%bind _ = token Token.RBrace in
-  return @@ Ast.FunDef (id, args, body, ret_t)
+  return @@ Ast.FunDef (id, args, ret_t,body )
 
 and print =
   let%bind _ = token Token.Print in

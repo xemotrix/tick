@@ -44,7 +44,7 @@ type expression =
 
 type statement =
   | Assign of string * expression
-  | FunDef of string * (string * type') list * block * type'
+  | FunDef of string * (string * type') list * type'* block 
   | If of (expression * block) list * block option
   | Return of expression
   | Print of expression
