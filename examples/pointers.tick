@@ -1,0 +1,12 @@
+fun lol(n: int) ref int {
+    let x = ref n;
+    return x;
+}
+let a = 43;
+let b = lol(a);
+
+print(b);
+let c = !b;
+print(c);
+
+return 0;

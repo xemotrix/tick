@@ -82,10 +82,17 @@ let identifier : string Parser.t = function
   | _ -> None
 ;;
 
-let type' : Ast.type' Parser.t = function
+let rec type' : Ast.type' Parser.t = function
   | Token.Int :: rest -> Some (Ast.Int, rest)
   | Token.Float :: rest -> Some (Ast.Float, rest)
   | Token.Bool :: rest -> Some (Ast.Bool, rest)
+  | Token.Ref :: rest ->
+    let x =
+      match type' rest with
+      | Some (t, rest') -> Some (Ast.Pointer t, rest')
+      | None -> None
+    in
+    x
   | _ -> None
 ;;
 
@@ -98,83 +105,45 @@ let value : Ast.value Parser.t =
   literal <|> identifier
 ;;
 
-let rec term ts =
+let rec term_binop tok to_ast =
+  let%bind f = factor in
+  let%bind _ = token tok in
+  let%bind t = term in
+  return @@ to_ast (f, t)
+
+and term ts =
   ts
   |>
-  let mul =
-    let%bind f = factor in
-    let%bind _ = token Token.Times in
-    let%bind t = term in
-    return (Ast.Mul (f, t))
-  in
-  let div =
-    let%bind f = factor in
-    let%bind _ = token Token.Divide in
-    let%bind t = term in
-    return (Ast.Div (f, t))
-  in
-  let mod' =
-    let%bind f = factor in
-    let%bind _ = token Token.Modulo in
-    let%bind t = term in
-    return (Ast.Modulo (f, t))
-  in
-  let or' =
-    let%bind f = factor in
-    let%bind _ = token Token.LogOr in
-    let%bind t = term in
-    return (Ast.LogOr (f, t))
-  in
-  let and' =
-    let%bind f = factor in
-    let%bind _ = token Token.LogAnd in
-    let%bind t = term in
-    return (Ast.LogAnd (f, t))
-  in
-  let xor' =
-    let%bind f = factor in
-    let%bind _ = token Token.LogXor in
-    let%bind t = term in
-    return (Ast.LogXor (f, t))
-  in
+  let mul = term_binop Token.Times (fun (f, t) -> Ast.Mul (f, t)) in
+  let div = term_binop Token.Divide (fun (f, t) -> Ast.Div (f, t)) in
+  let mod' = term_binop Token.Modulo (fun (f, t) -> Ast.Modulo (f, t)) in
+  let or' = term_binop Token.LogOr (fun (f, t) -> Ast.LogOr (f, t)) in
+  let and' = term_binop Token.LogAnd (fun (f, t) -> Ast.LogAnd (f, t)) in
+  let xor' = term_binop Token.LogXor (fun (f, t) -> Ast.LogXor (f, t)) in
   let factor = factor >>| fun f -> Ast.Factor f in
   or' <|> and' <|> xor' <|> mod' <|> mul <|> div <|> factor
+
+and expr_binop tok to_ast =
+  let%bind t = term in
+  let%bind _ = token tok in
+  let%bind e = expr in
+  return @@ to_ast (t, e)
 
 and expr ts =
   ts
   |>
-  let add =
-    let%bind t = term in
-    let%bind _ = token Token.Plus in
-    let%bind e = expr in
-    return (Ast.Add (t, e))
-  in
-  let sub =
-    let%bind t = term in
-    let%bind _ = token Token.Minus in
-    let%bind e = expr in
-    return (Ast.Sub (t, e))
-  in
-  let eq =
-    let%bind t = term in
-    let%bind _ = token Token.EqualsEq in
-    let%bind e = expr in
-    return (Ast.Eq (t, e))
-  in
-  let lt =
-    let%bind t = term in
-    let%bind _ = token Token.Less in
-    let%bind e = expr in
-    return (Ast.Lt (t, e))
-  in
-  let gt =
-    let%bind t = term in
-    let%bind _ = token Token.Greater in
-    let%bind e = expr in
-    return (Ast.Gt (t, e))
-  in
+  let add = expr_binop Token.Plus (fun (t, e) -> Ast.Add (t, e)) in
+  let sub = expr_binop Token.Minus (fun (t, e) -> Ast.Sub (t, e)) in
+  let eq = expr_binop Token.EqualsEq (fun (t, e) -> Ast.Eq (t, e)) in
+  let lt = expr_binop Token.Less (fun (t, e) -> Ast.Lt (t, e)) in
+  let gt = expr_binop Token.Greater (fun (t, e) -> Ast.Gt (t, e)) in
   let term = term >>| fun t -> Ast.Term t in
-  eq <|>add <|> sub <|> lt <|> gt <|> term
+  eq <|> add <|> sub <|> lt <|> gt <|> term
+
+and factor_unaryop tok to_ast =
+  let%bind _ = token tok in
+  let%bind f = factor in
+  return @@ to_ast f
 
 and factor ts =
   ts
@@ -186,6 +155,8 @@ and factor ts =
     return (Ast.Group e)
   in
   let value = value >>| fun v -> Ast.Value v in
+  let ref = factor_unaryop Token.Ref (fun t -> Ast.Ref t) in
+  let deref = factor_unaryop Token.Deref (fun t -> Ast.Deref t) in
   let funcall =
     let%bind id = identifier in
     let%bind _ = token Token.LParen in
@@ -193,7 +164,7 @@ and factor ts =
     let%bind _ = token Token.RParen in
     return (Ast.FunCall (id, args))
   in
-  funcall <|> gexpr <|> value
+  funcall <|> gexpr <|> value <|> ref <|> deref
 ;;
 
 let assign =

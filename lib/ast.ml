@@ -4,6 +4,7 @@ type type' =
   | Int
   | Float
   | Bool
+  | Pointer of type'
 [@@deriving show, sexp, eq]
 
 type value =
@@ -17,6 +18,8 @@ and factor =
   | Group of expression
   | FunCall of string * expression list
   | Value of value
+  | Ref of factor
+  | Deref of factor
 [@@deriving show, sexp, eq]
 
 and term =

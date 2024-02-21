@@ -5,12 +5,14 @@ type type' =
   | Int
   | Float
   | Bool
+  | Pointer of type'
 [@@deriving show, sexp, eq]
 
-let type_of_ast_type = function
+let rec type_of_ast_type = function
   | Ast.Int -> Int
   | Ast.Float -> Float
   | Ast.Bool -> Bool
+  | Ast.Pointer t -> Pointer (type_of_ast_type t)
 ;;
 
 (* symbol table *)
@@ -70,10 +72,11 @@ let fun_type = function_type int_type [||]
 let bool_type = i1_type the_context
 
 (* type mapping *)
-let map_type = function
+let rec map_type = function
   | Int -> int_type
   | Float -> float_type
   | Bool -> bool_type
+  | Pointer ty -> pointer_type (map_type ty)
 ;;
 
 type binop =
@@ -94,10 +97,12 @@ let printf_ty = var_arg_function_type int_type [| pointer_type char_type |]
 let printf = declare_function "printf" printf_ty the_module
 let print_int = ref null_value
 let print_float = ref null_value
+let print_ptr = ref null_value
 
 let init_printers builder =
   print_int := build_global_stringptr "%d\n" "int_printer" builder;
-  print_float := build_global_stringptr "%f\n" "float_printer" builder
+  print_float := build_global_stringptr "%f\n" "float_printer" builder;
+  print_ptr := build_global_stringptr "&(%p)\n" "ptr_printer" builder
 ;;
 
 (* write IR to file *)
@@ -161,7 +166,10 @@ and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
     let value, v_t = compile_expr c expr in
     (match v_t with
      | Int | Bool -> build_call printf [| !print_int; value |] "" c.builder
-     | Float -> build_call printf [| !print_float; value |] "" c.builder)
+     | Float -> build_call printf [| !print_float; value |] "" c.builder
+     | Pointer _ ->
+       Printf.printf "pointer type: %s\n" (Sexp.to_string_hum (sexp_of_type' v_t));
+       build_call printf [| !print_ptr; value |] "" c.builder)
     |> ignore;
     c
   | Ast.If (if_blocks, maybe_else) -> compile_if c if_blocks maybe_else
@@ -298,6 +306,16 @@ and compile_factor (c : Compiler.t) (factor : Ast.factor) : llvalue * type' =
   | Ast.Group exp -> compile_expr c exp
   | Ast.Value valu -> compile_value c valu
   | Ast.FunCall (name, args) -> compile_funcall c name args
+  | Ast.Ref f ->
+    let fv, ft = compile_factor c f in
+    let ptr_ty = Pointer ft in
+    let malloc, ptr_ty = build_malloc (map_type ft) "" c.builder, ptr_ty in
+    build_store fv malloc c.builder |> ignore;
+    malloc, ptr_ty
+  | Ast.Deref f ->
+    (match compile_factor c f with
+     | v, Pointer t -> build_load v "" c.builder, t
+     | _ -> failwith "type error: cannot dereference non-pointer type")
 
 and compile_value (c : Compiler.t) (value : Ast.value) : llvalue * type' =
   match value with

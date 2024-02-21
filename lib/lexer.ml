@@ -51,6 +51,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
      | '+' -> advance input, Plus :: tokens
      | '-' -> advance input, Minus :: tokens
      | '*' -> advance input, Times :: tokens
+     | '!' -> advance input, Deref :: tokens
      | '%' -> advance input, Modulo :: tokens
      | '/' ->
        (match peek input with
@@ -79,21 +80,22 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
         | Some num, rest -> rest, num :: tokens)
      | c when Char.is_alpha c ->
        (match get_iden input with
+        | "and", rest -> rest, LogAnd :: tokens
         | "bool", rest -> rest, Bool :: tokens
         | "else", rest -> rest, Else :: tokens
         | "extern", rest -> rest, Extern :: tokens
-        | "and", rest -> rest, LogAnd :: tokens
-        | "or", rest -> rest, LogOr :: tokens
-        | "xor", rest -> rest, LogXor :: tokens
         | "false", rest -> rest, False :: tokens
         | "float", rest -> rest, Float :: tokens
         | "fun", rest -> rest, Fun :: tokens
         | "if", rest -> rest, If :: tokens
         | "int", rest -> rest, Int :: tokens
         | "let", rest -> rest, Let :: tokens
+        | "or", rest -> rest, LogOr :: tokens
         | "print", rest -> rest, Print :: tokens
+        | "ref", rest -> rest, Ref :: tokens
         | "return", rest -> rest, Return :: tokens
         | "true", rest -> rest, True :: tokens
+        | "xor", rest -> rest, LogXor :: tokens
         | iden, rest -> rest, Identifier iden :: tokens)
      | _ -> failwith @@ Printf.sprintf "Unknown token: '%s'" input)
     |> lex'

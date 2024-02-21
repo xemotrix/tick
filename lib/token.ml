@@ -39,6 +39,9 @@ type t =
   | LogOr
   | LogXor
   | Modulo
+  (* Unops *)
+  | Ref
+  | Deref
   (* Values *)
   | Identifier of string
   | IntLiteral of int
