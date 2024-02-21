@@ -172,7 +172,7 @@ let assign =
   let%bind id = identifier in
   let%bind _ = token Token.Equals in
   let%bind e = expr in
-  let%bind _ = token Token.Scln in
+  (* let%bind _ = token Token.Scln in *)
   return @@ Ast.Assign (id, e)
 ;;
 
@@ -200,7 +200,7 @@ let rec fundef ts =
 and print =
   let%bind _ = token Token.Print in
   let%bind e = expr in
-  let%bind _ = token Token.Scln in
+  (* let%bind _ = token Token.Scln in *)
   return @@ Ast.Print e
 
 and braced_block ts =
@@ -241,7 +241,7 @@ and if' ts =
 and return' =
   let%bind _ = token Token.Return in
   let%bind e = expr in
-  let%bind _ = token Token.Scln in
+  (* let%bind _ = token Token.Scln in *)
   return @@ Ast.Return e
 
 and stmt ts = ts |> (assign <|> fundef <|> print <|> if' <|> return')

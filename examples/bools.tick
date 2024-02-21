@@ -1,17 +1,17 @@
 fun isLarge(n: int) bool {
-    return n > 10;
+    return n > 10
 }
 
 fun isEven(n: int) bool {
-    return n % 2 == 0;
+    return n % 2 == 0
 }
 
-let n = 12;
+let n = 12
 
 if isLarge(n) and isEven(n) {
-    print 1;
+    print 1
 } else {
-    print 0;
+    print 0
 }
 
-return 0;
+return 0
