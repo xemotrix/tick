@@ -53,6 +53,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
      | '*' -> advance input, Times :: tokens
      | '!' -> advance input, Deref :: tokens
      | '%' -> advance input, Modulo :: tokens
+     | '^' -> advance input, StrConcat :: tokens
      | '/' ->
        (match peek input with
         | Some '/' ->

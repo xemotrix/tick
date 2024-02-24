@@ -5,6 +5,7 @@ type type' =
   | Float
   | Bool
   | String
+  | Char
   | Pointer of type'
 [@@deriving show, sexp, eq]
 
@@ -23,6 +24,7 @@ type binop =
   | LogAnd
   | LogOr
   | LogXor
+  | Concat
   | Add
   | Sub
   | Eq
@@ -44,7 +46,7 @@ type expression =
 
 type statement =
   | Assign of string * expression
-  | FunDef of string * (string * type') list * type'* block 
+  | FunDef of string * (string * type') list * type' * block
   | If of (expression * block) list * block option
   | Return of expression
   | Print of expression

@@ -40,6 +40,7 @@ type t =
   | LogOr
   | LogXor
   | Modulo
+  | StrConcat (* Caret: ^ *)
   (* Unops *)
   | Ref
   | Deref

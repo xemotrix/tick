@@ -123,12 +123,12 @@ and term ts =
   |>
   let mul = term_binop Token.Times (fun (f, t) -> Ast.(BinOp (Mul, f, t))) in
   let div = term_binop Token.Divide (fun (f, t) -> Ast.(BinOp (Div, f, t))) in
+  let concat = term_binop Token.StrConcat (fun (f, t) -> Ast.(BinOp (Concat, f, t))) in
   let mod' = term_binop Token.Modulo (fun (f, t) -> Ast.(BinOp (Modulo, f, t))) in
   let or' = term_binop Token.LogOr (fun (f, t) -> Ast.(BinOp (LogOr, f, t))) in
   let and' = term_binop Token.LogAnd (fun (f, t) -> Ast.(BinOp (LogAnd, f, t))) in
   let xor' = term_binop Token.LogXor (fun (f, t) -> Ast.(BinOp (LogXor, f, t))) in
-  (* let factor = factor >>| fun f -> Ast.Factor f in *)
-  or' <|> and' <|> xor' <|> mod' <|> mul <|> div <|> factor
+  or' <|> and' <|> xor' <|> mod' <|> concat <|> mul <|> div <|> factor
 
 and expr_binop tok to_ast =
   let%bind t = term in
@@ -144,7 +144,6 @@ and expr ts =
   let eq = expr_binop Token.EqualsEq (fun (t, e) -> Ast.(BinOp (Eq, t, e))) in
   let lt = expr_binop Token.Less (fun (t, e) -> Ast.(BinOp (Lt, t, e))) in
   let gt = expr_binop Token.Greater (fun (t, e) -> Ast.(BinOp (Gt, t, e))) in
-  (* let term = term >>| fun t -> Ast.Term t in *)
   eq <|> add <|> sub <|> lt <|> gt <|> term
 
 and factor_unaryop tok to_ast =
@@ -202,7 +201,7 @@ let rec fundef ts =
   let%bind _ = token Token.LBrace in
   let%bind body = block in
   let%bind _ = token Token.RBrace in
-  return @@ Ast.FunDef (id, args, ret_t,body )
+  return @@ Ast.FunDef (id, args, ret_t, body)
 
 and print =
   let%bind _ = token Token.Print in

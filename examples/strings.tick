@@ -1,7 +1,11 @@
 fun get_string() string {
-    return "some cool string! 🥹"
+    let a = "some cool "
+    let b = "string! 🥹"
+    return a^b
+    //return "Hello, world!"
 }
 
-let s = get_string()
+let s = get_string() ^ "what"
+let s = s ^ "thefuck"
 print s
 return 0
