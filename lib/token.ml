@@ -6,6 +6,7 @@ type t =
   | Print
   | Extern
   | Return
+  | Type
   | If
   | Else
   | True
@@ -20,6 +21,7 @@ type t =
   | Colon
   | Scln
   | Comma
+  | Period
   (* Grouping *)
   | LBrace
   | RBrace

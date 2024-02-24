@@ -94,15 +94,6 @@ let rec type' : Ast.type' Parser.t = function
   | _ -> None
 ;;
 
-let value : Ast.expression Parser.t =
-  bool_literal
-  <|> int_literal
-  <|> float_literal
-  <|> string_literal
-  <|> (identifier >>| fun id -> Ast.Var id)
-  >>| fun v -> Ast.Value v
-;;
-
 let token_of_binop = function
   | Ast.Mul -> Token.Times
   | Ast.Div -> Token.Divide
@@ -129,6 +120,7 @@ type assoc =
 
 type precedence =
   | Unit
+  | Access
   | Memory
   | Multiplicative
   | Additive
@@ -145,7 +137,34 @@ let prev_prec p =
   precedence_to_enum p |> Int.pred |> precedence_of_enum
 ;;
 
-let rec binop ?(assoc = Left) prec op =
+let rec field_assign ts =
+  ts
+  |>
+  let%bind id = identifier in
+  let%bind _ = token Token.Equals in
+  let%bind e = expr in
+  return (id, e)
+
+and struct_literal ts =
+  ts
+  |>
+  let%bind typeid = identifier in
+  let%bind _ = token Token.LBrace in
+  let%bind fields = some field_assign in
+  let%bind _ = token Token.RBrace in
+  return (Ast.StructLiteral (typeid, fields))
+
+and value ts =
+  ts
+  |> (bool_literal
+      <|> int_literal
+      <|> float_literal
+      <|> string_literal
+      <|> struct_literal
+      <|> (identifier >>| fun id -> Ast.Var id)
+      >>| fun v -> Ast.Value v)
+
+and binop ?(assoc = Left) prec op =
   let%bind l = precexpr (prev_prec prec) in
   let%bind _ = token (token_of_binop op) in
   let%bind r = precexpr prec in
@@ -178,6 +197,14 @@ and funcall ts =
   let%bind _ = token Token.RParen in
   return (Ast.FunCall (id, args))
 
+and access ts =
+  ts
+  |>
+  let%bind struct_expr = precexpr (Some Unit) in
+  let%bind _ = token Token.Period in
+  let%bind field = identifier in
+  return (Ast.Access (struct_expr, field))
+
 and precexpr prec =
   match prec with
   | None -> zero
@@ -186,6 +213,7 @@ and precexpr prec =
     let unop = unop prec in
     (match p with
      | Unit -> funcall <|> group_expr <|> value
+     | Access -> access
      | Memory -> unop Ref <|> unop Deref
      | Multiplicative -> binop Mul <|> binop Div <|> binop Modulo <|> binop Concat
      | Additive -> binop Add <|> binop Sub
@@ -225,6 +253,16 @@ let rec fundef ts =
   let%bind body = block in
   let%bind _ = token Token.RBrace in
   return @@ Ast.FunDef (id, args, ret_t, body)
+
+and typedef ts =
+  ts
+  |>
+  let%bind _ = token Token.Type in
+  let%bind id = identifier in
+  let%bind _ = token Token.LBrace in
+  let%bind fields = some typed_iden in
+  let%bind _ = token Token.RBrace in
+  return @@ Ast.TypeDef (id, fields)
 
 and print =
   let%bind _ = token Token.Print in
@@ -270,7 +308,7 @@ and return' =
   let%bind e = expr in
   return @@ Ast.Return e
 
-and stmt ts = ts |> (assign <|> fundef <|> print <|> if' <|> return')
+and stmt ts = ts |> (assign <|> fundef <|> typedef <|> print <|> if' <|> return')
 and block ts = ts |> (some stmt >>| fun ss -> Ast.Block ss)
 
 let parse = block

@@ -44,6 +44,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
      | ';' -> advance input, Scln :: tokens
      | ':' -> advance input, Colon :: tokens
      | ',' -> advance input, Comma :: tokens
+     | '.' -> advance input, Period :: tokens
      | '{' -> advance input, LBrace :: tokens
      | '}' -> advance input, RBrace :: tokens
      | '(' -> advance input, LParen :: tokens
@@ -104,6 +105,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
         | "return", rest -> rest, Return :: tokens
         | "string", rest -> rest, String :: tokens
         | "true", rest -> rest, True :: tokens
+        | "type", rest -> rest, Type :: tokens
         | "xor", rest -> rest, LogXor :: tokens
         | iden, rest -> rest, Identifier iden :: tokens)
      | _ -> failwith @@ Printf.sprintf "Unknown token: '%s'" input)

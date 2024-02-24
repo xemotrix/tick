@@ -1,0 +1,17 @@
+type person {
+    name: string
+    age: int
+}
+
+let p = person {
+    name = "pepe"
+    age = 30
+}
+
+return 0
+//
+//let n = p.name
+//let a = p.age
+//
+//print n
+//print a
