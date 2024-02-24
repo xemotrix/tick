@@ -19,20 +19,12 @@ module MParser = Monad.Make (Parser)
 open MParser.Let_syntax
 
 module Combinators = struct
-  let item : Token.t Parser.t =
-    fun ts ->
-    match ts with
-    | [] -> None
-    | hd :: tl -> Some (hd, tl)
-  ;;
-
   let zero : 'a Parser.t = fun _ -> None
 
-  let sat (p : Token.t -> bool) : Token.t Parser.t =
-    item >>= fun token -> if p token then return token else zero
+  let token t = function
+    | hd :: tl when Token.equal hd t -> Some (hd, tl)
+    | _ -> None
   ;;
-
-  let token t = sat Token.(equal t)
 
   let or' (p : 'a Parser.t) (q : 'a Parser.t) : 'a Parser.t =
     fun ts ->
@@ -61,24 +53,24 @@ open Combinators
 
 (* Tick parsing *)
 (* ------------ *)
-let number_int : int Parser.t = function
-  | Token.IntLiteral n :: rest -> Some (n, rest)
+let int_literal : Ast.value Parser.t = function
+  | Token.IntLiteral n :: rest -> Some (Ast.ILiteral n, rest)
   | _ -> None
 ;;
 
-let number_float : float Parser.t = function
-  | Token.FloatLiteral n :: rest -> Some (n, rest)
+let float_literal : Ast.value Parser.t = function
+  | Token.FloatLiteral n :: rest -> Some (Ast.FPLiteral n, rest)
   | _ -> None
 ;;
 
-let string' : string Parser.t = function
-  | Token.StringLiteral s :: rest -> Some (s, rest)
+let string_literal : Ast.value Parser.t = function
+  | Token.StringLiteral s :: rest -> Some (Ast.StringLiteral s, rest)
   | _ -> None
 ;;
 
-let bool' : bool Parser.t = function
-  | Token.True :: rest -> Some (true, rest)
-  | Token.False :: rest -> Some (false, rest)
+let bool_literal : Ast.value Parser.t = function
+  | Token.True :: rest -> Some (Ast.BoolLiteral true, rest)
+  | Token.False :: rest -> Some (Ast.BoolLiteral false, rest)
   | _ -> None
 ;;
 
@@ -102,75 +94,107 @@ let rec type' : Ast.type' Parser.t = function
   | _ -> None
 ;;
 
-let value : Ast.value Parser.t =
-  let int' = number_int >>| fun n -> Ast.ILiteral n in
-  let float' = number_float >>| fun n -> Ast.FPLiteral n in
-  let bool' = bool' >>| fun b -> Ast.BoolLiteral b in
-  let string' = string' >>| fun s -> Ast.StringLiteral s in
-  let literal = bool' <|> int' <|> float' <|> string' in
-  let identifier = identifier >>| fun i -> Ast.Var i in
-  literal <|> identifier
+let value : Ast.expression Parser.t =
+  bool_literal
+  <|> int_literal
+  <|> float_literal
+  <|> string_literal
+  <|> (identifier >>| fun id -> Ast.Var id)
+  >>| fun v -> Ast.Value v
 ;;
 
-let rec term_binop tok to_ast =
-  let%bind f = factor in
-  let%bind _ = token tok in
-  let%bind t = term in
-  return @@ to_ast (f, t)
+let token_of_binop = function
+  | Ast.Mul -> Token.Times
+  | Ast.Div -> Token.Divide
+  | Ast.Modulo -> Token.Modulo
+  | Ast.Concat -> Token.StrConcat
+  | Ast.Add -> Token.Plus
+  | Ast.Sub -> Token.Minus
+  | Ast.Lt -> Token.Less
+  | Ast.Gt -> Token.Greater
+  | Ast.Eq -> Token.EqualsEq
+  | Ast.LogAnd -> Token.LogAnd
+  | Ast.LogXor -> Token.LogXor
+  | Ast.LogOr -> Token.LogOr
+;;
 
-and term ts =
+let token_of_unop = function
+  | Ast.Ref -> Token.Ref
+  | Ast.Deref -> Token.Deref
+;;
+
+type assoc =
+  | Left
+  | Right
+
+type precedence =
+  | Unit
+  | Memory
+  | Multiplicative
+  | Additive
+  | Comparison
+  | Equality
+  | LogicalAnd
+  | LogicalOr
+  | TopPrecedence
+[@@deriving sexp, eq, ord, enum]
+
+let prev_prec p =
+  let open Option.Let_syntax in
+  let%bind p = p in
+  precedence_to_enum p |> Int.pred |> precedence_of_enum
+;;
+
+let rec binop ?(assoc = Left) prec op =
+  let%bind l = precexpr (prev_prec prec) in
+  let%bind _ = token (token_of_binop op) in
+  let%bind r = precexpr prec in
+  match assoc with
+  | Left -> return @@ Ast.(BinOp (op, l, r))
+  | Right -> return @@ Ast.(BinOp (op, r, l))
+
+and unop prec op =
+  let%bind _ = token (token_of_unop op) in
+  let%bind f = precexpr prec in
+  return @@ Ast.(UnOp (op, f))
+
+and expr : Ast.expression Parser.t = function
+  | ts -> precexpr (Some TopPrecedence) ts
+
+and group_expr ts =
   ts
   |>
-  let mul = term_binop Token.Times (fun (f, t) -> Ast.(BinOp (Mul, f, t))) in
-  let div = term_binop Token.Divide (fun (f, t) -> Ast.(BinOp (Div, f, t))) in
-  let concat = term_binop Token.StrConcat (fun (f, t) -> Ast.(BinOp (Concat, f, t))) in
-  let mod' = term_binop Token.Modulo (fun (f, t) -> Ast.(BinOp (Modulo, f, t))) in
-  let or' = term_binop Token.LogOr (fun (f, t) -> Ast.(BinOp (LogOr, f, t))) in
-  let and' = term_binop Token.LogAnd (fun (f, t) -> Ast.(BinOp (LogAnd, f, t))) in
-  let xor' = term_binop Token.LogXor (fun (f, t) -> Ast.(BinOp (LogXor, f, t))) in
-  or' <|> and' <|> xor' <|> mod' <|> concat <|> mul <|> div <|> factor
-
-and expr_binop tok to_ast =
-  let%bind t = term in
-  let%bind _ = token tok in
+  let%bind _ = token Token.LParen in
   let%bind e = expr in
-  return @@ to_ast (t, e)
+  let%bind _ = token Token.RParen in
+  return e
 
-and expr ts =
+and funcall ts =
   ts
   |>
-  let add = expr_binop Token.Plus (fun (t, e) -> Ast.(BinOp (Add, t, e))) in
-  let sub = expr_binop Token.Minus (fun (t, e) -> Ast.(BinOp (Sub, t, e))) in
-  let eq = expr_binop Token.EqualsEq (fun (t, e) -> Ast.(BinOp (Eq, t, e))) in
-  let lt = expr_binop Token.Less (fun (t, e) -> Ast.(BinOp (Lt, t, e))) in
-  let gt = expr_binop Token.Greater (fun (t, e) -> Ast.(BinOp (Gt, t, e))) in
-  eq <|> add <|> sub <|> lt <|> gt <|> term
+  let%bind id = identifier in
+  let%bind _ = token Token.LParen in
+  let%bind args = some expr in
+  let%bind _ = token Token.RParen in
+  return (Ast.FunCall (id, args))
 
-and factor_unaryop tok to_ast =
-  let%bind _ = token tok in
-  let%bind f = factor in
-  return @@ to_ast f
-
-and factor ts =
-  ts
-  |>
-  let gexpr =
-    let%bind _ = token Token.LParen in
-    let%bind e = expr in
-    let%bind _ = token Token.RParen in
-    return e
-  in
-  let value = value >>| fun v -> Ast.Value v in
-  let ref = factor_unaryop Token.Ref (fun t -> Ast.(UnOp (Ref, t))) in
-  let deref = factor_unaryop Token.Deref (fun t -> Ast.(UnOp (Deref, t))) in
-  let funcall =
-    let%bind id = identifier in
-    let%bind _ = token Token.LParen in
-    let%bind args = some expr in
-    let%bind _ = token Token.RParen in
-    return (Ast.FunCall (id, args))
-  in
-  funcall <|> gexpr <|> value <|> ref <|> deref
+and precexpr prec =
+  match prec with
+  | None -> zero
+  | Some p ->
+    let binop = binop prec in
+    let unop = unop prec in
+    (match p with
+     | Unit -> funcall <|> group_expr <|> value
+     | Memory -> unop Ref <|> unop Deref
+     | Multiplicative -> binop Mul <|> binop Div <|> binop Modulo <|> binop Concat
+     | Additive -> binop Add <|> binop Sub
+     | Comparison -> binop Lt <|> binop Gt
+     | Equality -> binop Eq
+     | LogicalAnd -> binop LogAnd
+     | LogicalOr -> binop LogOr
+     | TopPrecedence -> zero)
+    <|> precexpr (prev_prec prec)
 ;;
 
 let assign =
@@ -178,7 +202,6 @@ let assign =
   let%bind id = identifier in
   let%bind _ = token Token.Equals in
   let%bind e = expr in
-  (* let%bind _ = token Token.Scln in *)
   return @@ Ast.Assign (id, e)
 ;;
 
@@ -206,7 +229,6 @@ let rec fundef ts =
 and print =
   let%bind _ = token Token.Print in
   let%bind e = expr in
-  (* let%bind _ = token Token.Scln in *)
   return @@ Ast.Print e
 
 and braced_block ts =
@@ -242,12 +264,10 @@ and if' ts =
   let%bind elifs = some elseif' in
   let%bind el = maybe else' in
   return @@ Ast.If ([ e, b ] @ elifs, el)
-(* return @@ Ast.If ([ e, b ] @ elifs, None) *)
 
 and return' =
   let%bind _ = token Token.Return in
   let%bind e = expr in
-  (* let%bind _ = token Token.Scln in *)
   return @@ Ast.Return e
 
 and stmt ts = ts |> (assign <|> fundef <|> print <|> if' <|> return')
