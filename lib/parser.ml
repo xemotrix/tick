@@ -19,6 +19,7 @@ module MParser = Monad.Make (Parser)
 open MParser.Let_syntax
 
 module Combinators = struct
+  let ( let* ) a f = MParser.bind a ~f
   let zero : 'a Parser.t = fun _ -> None
 
   let token t = function
@@ -33,18 +34,46 @@ module Combinators = struct
     | None -> q ts
   ;;
 
+  let and' (p : 'a Parser.t) (q : 'b Parser.t) : ('a * 'b) Parser.t =
+    let* l = p in
+    let* r = q in
+    return (l, r)
+  ;;
+
+  let and_left (p : 'a Parser.t) (q : 'b Parser.t) : 'a Parser.t =
+    let%bind l = p in
+    let%bind _ = q in
+    return l
+  ;;
+
+  let and_right (p : 'a Parser.t) (q : 'b Parser.t) : 'b Parser.t =
+    let%bind _ = p in
+    let%bind r = q in
+    return r
+  ;;
+
   let ( <|> ) = or'
+  let ( <<< ) = and_left
+  let ( >>> ) = and_right
+  let ( ~$ ) = token
 
   let rec some p =
-    (let%bind x = p in
-     let%bind xs = some p in
+    (let* x = p in
+     let* xs = some p in
+     return (x :: xs))
+    <|> return []
+  ;;
+
+  let some_comma_separated p =
+    (let* x = p in
+     let* xs = some (~$Token.Comma >>> p) in
      return (x :: xs))
     <|> return []
   ;;
 
   let maybe p =
-    (let%bind x = p in
-     return (Some x))
+    (let* x = p in
+     return @@ Some x)
     <|> return None
   ;;
 end
@@ -64,7 +93,7 @@ let float_literal : Ast.value Parser.t = function
 ;;
 
 let string_literal : Ast.value Parser.t = function
-  | Token.StringLiteral s :: rest -> Some (Ast.StringLiteral (s), rest)
+  | Token.StringLiteral s :: rest -> Some (Ast.StringLiteral s, rest)
   | _ -> None
 ;;
 
@@ -141,19 +170,17 @@ let prev_prec p =
 let rec field_assign ts =
   ts
   |>
-  let%bind id = identifier in
-  let%bind _ = token Token.Equals in
-  let%bind e = expr in
+  let* id = identifier in
+  let* _ = ~$Token.Equals in
+  let* e = expr in
   return (id, e)
 
 and struct_literal ts =
   ts
   |>
-  let%bind typeid = identifier in
-  let%bind _ = token Token.LBrace in
-  let%bind fields = some field_assign in
-  let%bind _ = token Token.RBrace in
-  return (Ast.StructLiteral (typeid, fields))
+  let* typeid = identifier in
+  let* fields = ~$Token.LBrace >>> some field_assign <<< ~$Token.RBrace in
+  return @@ Ast.StructLiteral (typeid, fields)
 
 and value ts =
   ts
@@ -166,45 +193,38 @@ and value ts =
       >>| fun v -> Ast.Value v)
 
 and binop ?(assoc = Left) prec op =
-  let%bind l = precexpr (prev_prec prec) in
-  let%bind _ = token (token_of_binop op) in
-  let%bind r = precexpr prec in
+  let* l = precexpr (prev_prec prec) in
+  let* _ = ~$(token_of_binop op) in
+  let* r = precexpr prec in
   match assoc with
   | Left -> return @@ Ast.(BinOp (op, l, r))
   | Right -> return @@ Ast.(BinOp (op, r, l))
 
 and unop prec op =
-  let%bind _ = token (token_of_unop op) in
-  let%bind f = precexpr prec in
+  let* _ = ~$(token_of_unop op) in
+  (* don't use >>> here because precexpr will recurse infinitely *)
+  (* "precexpr prec" has to be inside a bind *)
+  let* f = precexpr prec in
   return @@ Ast.(UnOp (op, f))
 
 and expr : Ast.expression Parser.t = function
   | ts -> precexpr (Some TopPrecedence) ts
 
-and group_expr ts =
-  ts
-  |>
-  let%bind _ = token Token.LParen in
-  let%bind e = expr in
-  let%bind _ = token Token.RParen in
-  return e
+and group_expr ts = ts |> (~$Token.LParen >>> expr <<< ~$Token.RParen)
 
 and funcall ts =
   ts
   |>
-  let%bind id = identifier in
-  let%bind _ = token Token.LParen in
-  let%bind args = some expr in
-  let%bind _ = token Token.RParen in
-  return (Ast.FunCall (id, args))
+  let* id = identifier in
+  let* args = ~$Token.LParen >>> some_comma_separated expr <<< ~$Token.RParen in
+  return @@ Ast.FunCall (id, args)
 
 and access ts =
   ts
   |>
-  let%bind struct_expr = precexpr (Some Unit) in
-  let%bind _ = token Token.Period in
-  let%bind field = identifier in
-  return (Ast.Access (struct_expr, field))
+  let* struct_expr = precexpr (Some Unit) in
+  let* field = ~$Token.Period >>> identifier in
+  return @@ Ast.Access (struct_expr, field)
 
 and precexpr prec =
   match prec with
@@ -224,89 +244,71 @@ and precexpr prec =
      | LogicalOr -> binop LogOr
      | TopPrecedence -> zero)
     <|> precexpr (prev_prec prec)
-;;
 
-let assign =
-  let%bind _ = token Token.Let in
-  let%bind id = identifier in
-  let%bind _ = token Token.Equals in
-  let%bind e = expr in
-  return @@ Ast.Assign (id, e)
-;;
-
-let typed_iden =
-  let%bind id = identifier in
-  let%bind _ = token Token.Colon in
-  let%bind t = type' in
-  return (id, t)
-;;
-
-let rec fundef ts =
+and assign ts =
   ts
   |>
-  let%bind _ = token Token.Fun in
-  let%bind id = identifier in
-  let%bind _ = token Token.LParen in
-  let%bind args = some typed_iden in
-  let%bind _ = token Token.RParen in
-  let%bind ret_t = type' in
-  let%bind _ = token Token.LBrace in
-  let%bind body = block in
-  let%bind _ = token Token.RBrace in
+  let* id = ~$Token.Let >>> identifier in
+  let* e = ~$Token.Equals >>> expr in
+  return @@ Ast.Assign (id, e)
+
+and typed_iden ts =
+  ts
+  |>
+  let* id = identifier in
+  let* t = ~$Token.Colon >>> type' in
+  return (id, t)
+
+and fundef ts =
+  ts
+  |>
+  let* id = ~$Token.Fun >>> identifier in
+  let* args = ~$Token.LParen >>> some_comma_separated typed_iden <<< ~$Token.RParen in
+  let* ret_t = type' in
+  let* body = braced_block in
   return @@ Ast.FunDef (id, args, ret_t, body)
 
 and typedef ts =
   ts
   |>
-  let%bind _ = token Token.Type in
-  let%bind id = identifier in
-  let%bind _ = token Token.LBrace in
-  let%bind fields = some typed_iden in
-  let%bind _ = token Token.RBrace in
+  let* id = ~$Token.Type >>> identifier in
+  let* fields = ~$Token.LBrace >>> some typed_iden <<< ~$Token.RBrace in
   return @@ Ast.TypeDef (id, fields)
 
-and print =
-  let%bind _ = token Token.Print in
-  let%bind e = expr in
-  return @@ Ast.Print e
-
-and braced_block ts =
+and print ts =
   ts
   |>
-  let%bind _ = token Token.LBrace in
-  let%bind b = block in
-  let%bind _ = token Token.RBrace in
-  return b
+  let* e = ~$Token.Print >>> expr in
+  return @@ Ast.Print e
+
+and braced_block ts = ts |> (~$Token.LBrace >>> block <<< ~$Token.RBrace)
 
 and elseif' ts =
   ts
   |>
-  let%bind _ = token Token.Else in
-  let%bind _ = token Token.If in
-  let%bind e = expr in
-  let%bind b = braced_block in
+  let* e = ~$Token.Else >>> ~$Token.If >>> expr in
+  let* b = braced_block in
   return @@ (e, b)
 
 and else' ts =
   ts
   |>
-  let%bind _ = token Token.Else in
-  let%bind b = braced_block in
+  let* b = ~$Token.Else >>> braced_block in
   return b
 
 and if' ts =
   ts
   |>
-  let%bind _ = token Token.If in
-  let%bind e = expr in
-  let%bind b = braced_block in
-  let%bind elifs = some elseif' in
-  let%bind el = maybe else' in
+  let* e = ~$Token.If >>> expr in
+  let* b = braced_block in
+  let* elifs = some elseif' in
+  let* el = maybe else' in
   return @@ Ast.If ([ e, b ] @ elifs, el)
 
-and return' =
-  let%bind _ = token Token.Return in
-  let%bind e = expr in
+and return' ts =
+  ts
+  |>
+  let* e = ~$Token.Return >>> expr in
   return @@ Ast.Return e
 
 and stmt ts = ts |> (assign <|> fundef <|> typedef <|> print <|> if' <|> return')

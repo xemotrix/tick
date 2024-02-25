@@ -40,6 +40,7 @@ let sanitize_string (s : string) : string =
     | '\\' :: 'n' :: rest -> san ('\n' :: acc) rest
     | '\\' :: 'r' :: rest -> san ('\r' :: acc) rest
     | '\\' :: 't' :: rest -> san ('\t' :: acc) rest
+    | '\\' :: '0' :: rest -> san (char_of_int 0 :: acc) rest
     | c :: rest -> san (c :: acc) rest
     | [] -> List.rev acc |> String.of_char_list
   in

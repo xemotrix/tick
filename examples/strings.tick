@@ -4,10 +4,15 @@ fun get_string() string {
     return a^b
 }
 
-fun concat(a string b string) {
+fun concat(a: string, b: string) string {
     return a ^ b
 }
 
-let s = get_string() ^ "\nconcat " ^ "all the things"
+let s = get_string() ^ "\nconcat all the things"
+
+// \0 temporary, needed because for now we are using puts
+let s = concat(s, "\nthe end\0")
+
 print s
+
 return 0
