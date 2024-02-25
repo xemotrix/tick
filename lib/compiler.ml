@@ -18,7 +18,7 @@ let rec type_of_ast_type = function
   | Ast.String -> String
   | Ast.Char -> Char
   | Ast.Pointer t -> Pointer (type_of_ast_type t)
-  | Ast.Struct (name, _) -> Struct name
+  | Ast.Struct name -> Struct name
 ;;
 
 (* symbol table *)
@@ -40,7 +40,7 @@ module Compiler = struct
     { builder : llbuilder
     ; sym_table : SymTable.t
     ; fun_table : (string, type') Hashtbl.t (* maybe use sym_table? *)
-    ; type_table : (string, lltype * string list) Hashtbl.t
+    ; type_table : (string, lltype * (string * type') list) Hashtbl.t
     }
 
   let new_compiler builder =
@@ -55,22 +55,29 @@ module Compiler = struct
   let add_frame c = { c with sym_table = SymTable.add_frame c.sym_table }
   let drop_frame c = { c with sym_table = SymTable.drop_frame c.sym_table }
   let find_value c name = SymTable.find_value c.sym_table name
+  let add_struct c name type' = Hashtbl.set c.type_table ~key:name ~data:(type', [])
 
-  let add_struct c name type' fields =
-    Hashtbl.set c.type_table ~key:name ~data:(type', fields)
+  let set_struct_fields c name fields =
+    Hashtbl.update c.type_table name ~f:(function
+      | Some (t, _) -> t, fields
+      | None -> failwith "unknown struct")
   ;;
 
   let get_struct c name =
-    let open Option.Let_syntax in
-    let%map t, _ = Hashtbl.find c.type_table name in
-    t
+    match Hashtbl.find c.type_table name with
+    | Some t -> t
+    | None -> failwith "unknown struct"
   ;;
 
   let get_struct_field_idx c name field =
-    let open Option.Let_syntax in
-    let%bind _, fields = Hashtbl.find c.type_table name in
-    let%map idx, _ = List.findi fields ~f:(fun _ n -> String.equal n field) in
-    idx
+    match
+      let open Option.Let_syntax in
+      let%bind _, fields = Hashtbl.find c.type_table name in
+      let%map idx, _ = List.findi fields ~f:(fun _ (n, _) -> String.equal n field) in
+      idx
+    with
+    | Some idx -> idx
+    | None -> failwith "unknown field in struct"
   ;;
 
   let add_symbol c name value typ =
@@ -104,14 +111,14 @@ let string_type =
 ;;
 
 (* type mapping *)
-let rec map_type = function
+let rec map_type c = function
   | Int -> int_type
   | Float -> float_type
   | Bool -> bool_type
   | Char -> char_type
-  | Pointer ty -> pointer_type (map_type ty)
+  | Pointer ty -> pointer_type (map_type c ty)
   | String -> string_type
-  | Struct _name -> failwith "todo struct type"
+  | Struct name -> Compiler.get_struct c name |> fst
 ;;
 
 type binop =
@@ -232,7 +239,9 @@ and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
        let char_ptr = build_load char_ptr_ptr "" c.builder in
        let first_char = build_gep char_ptr [| const_int int_type 0 |] "" c.builder in
        build_call puts [| first_char |] "" c.builder
-     | Struct _ -> failwith "todo print struct"
+     | Struct struct_name ->
+       let str = build_global_stringptr (struct_name ^ "{todo fields}") "" c.builder in
+       build_call puts [| str |] "" c.builder
      | Pointer _ ->
        Printf.printf "pointer type: %s\n" (Sexp.to_string_hum (sexp_of_type' v_t));
        build_call printf [| !print_ptr; value |] "" c.builder)
@@ -247,13 +256,14 @@ and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
     compile_block (get_fundef_compiler c name args ret_t) body |> ignore;
     c
   | Ast.TypeDef (type_name, members) ->
-    let member_names = List.map members ~f:(fun (name, _) -> name) in
-    let member_lltypes =
-      List.map members ~f:(fun (_, t) -> type_of_ast_type t |> map_type) |> Array.of_list
-    in
     let ty = named_struct_type the_context type_name in
+    Compiler.add_struct c type_name ty;
+    let members = List.map members ~f:(fun (name, t) -> name, type_of_ast_type t) in
+    let member_lltypes =
+      List.map members ~f:(fun (_, t) -> t |> map_type c) |> Array.of_list
+    in
+    Compiler.set_struct_fields c type_name members;
     struct_set_body ty member_lltypes false;
-    Compiler.add_struct c type_name ty member_names;
     c
 
 and get_fundef_compiler c name args ret_t =
@@ -261,10 +271,10 @@ and get_fundef_compiler c name args ret_t =
   let args_t =
     List.map args ~f:(fun (_, t) ->
       let t = type_of_ast_type t in
-      map_type t)
+      map_type c t)
     |> Array.of_list
   in
-  let fun_type = function_type (map_type ret_t) args_t in
+  let fun_type = function_type (map_type c ret_t) args_t in
   let f = define_function name fun_type the_module in
   let builder = builder_at_end the_context (entry_block f) in
   Compiler.add_fun_t c name ret_t;
@@ -351,11 +361,22 @@ and compile_expr (c : Compiler.t) (expr : Ast.expression) : llvalue * type' =
   match expr with
   | Ast.(BinOp (op, lhs, rhs)) ->
     compile_binop c (compile_expr c lhs) (binop_expr_to_op op) (compile_expr c rhs)
-  | Ast.Access _ -> failwith "todo access"
+  | Ast.Access (expr, member) ->
+    (match compile_expr c expr with
+     | v, Struct struct_name ->
+       let idx = Compiler.get_struct_field_idx c struct_name member in
+       let ty, members = Compiler.get_struct c struct_name in
+       let stack_ptr = build_alloca ty "" c.builder in
+       build_store v stack_ptr c.builder |> ignore;
+       let field_ptr =
+         build_struct_gep stack_ptr idx (struct_name ^ "." ^ member) c.builder
+       in
+       build_load field_ptr "" c.builder, snd @@ List.nth_exn members idx
+     | _ -> failwith "type error: cannot access member of non-struct type")
   | Ast.(UnOp (Ref, e)) ->
     let fv, ft = compile_expr c e in
     let ptr_ty = Pointer ft in
-    let malloc = build_malloc (map_type ft) "" c.builder in
+    let malloc = build_malloc (map_type c ft) "" c.builder in
     build_store fv malloc c.builder |> ignore;
     malloc, ptr_ty
   | Ast.(UnOp (Deref, e)) ->
@@ -400,18 +421,15 @@ and compile_value (c : Compiler.t) (value : Ast.value) : llvalue * type' =
     in
     build_call create_fn [| strptr; lllen |] "strlit" c.builder, String
   | Ast.StructLiteral (type_name, members) ->
-    (match Compiler.get_struct c type_name with
-     | None -> failwith "unknown struct type"
-     | Some ty ->
-       let stack_ptr = build_alloca ty "" c.builder in
-       List.iter members ~f:(fun (field, value) ->
-         let value, _t = compile_expr c value in
-         match Compiler.get_struct_field_idx c type_name field with
-         | None -> failwith "unknown field in struct"
-         | Some idx ->
-           let field_ptr = build_struct_gep stack_ptr idx "" c.builder in
-           build_store value field_ptr c.builder |> ignore);
-       null_value, Struct type_name)
+    let ty, _ = Compiler.get_struct c type_name in
+    let stack_ptr = build_alloca ty "" c.builder in
+    List.iter members ~f:(fun (field, value) ->
+      let value, _t = compile_expr c value in
+      let idx = Compiler.get_struct_field_idx c type_name field in
+      let field_ptr = build_struct_gep stack_ptr idx "" c.builder in
+      build_store value field_ptr c.builder |> ignore);
+    let ret = build_load stack_ptr "" c.builder in
+    ret, Struct type_name
 
 (* Built-in functions *)
 and init_builtin_functions c =

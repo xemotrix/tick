@@ -84,6 +84,7 @@ let rec type' : Ast.type' Parser.t = function
   | Token.Float :: rest -> Some (Ast.Float, rest)
   | Token.Bool :: rest -> Some (Ast.Bool, rest)
   | Token.String :: rest -> Some (Ast.String, rest)
+  | Token.Identifier s :: rest -> Some (Ast.Struct s, rest)
   | Token.Ref :: rest ->
     let x =
       match type' rest with

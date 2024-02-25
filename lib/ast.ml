@@ -7,7 +7,8 @@ type type' =
   | String
   | Char
   | Pointer of type'
-  | Struct of string * (string * type') list
+  (* | Struct of string * (string * type') list *)
+  | Struct of string 
 [@@deriving show, sexp, eq]
 
 and value =

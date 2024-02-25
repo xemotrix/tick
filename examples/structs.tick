@@ -1,17 +1,39 @@
 type person {
-    name: string
-    age: int
+    name   : string
+    age    : int
+    height : float
+    alive  : bool
+    son    : ref person
+}
+
+let sonny = person {
+    name = "sonny"
 }
 
 let p = person {
-    name = "pepe"
-    age = 30
+     name    = "pepe"
+     age     = 30
+     height  = 1.8
+     alive   = true
+     son     = ref sonny
 }
 
+print "Person: " ^ p.name // pepe
+print p.age               // 30
+print p.height            // 1.8
+print p.alive             // 1
+print !p.son              // person{todo fields}
+
+print ""
+
+let son = !p.son
+print "Son: " ^ son.name // sonny
+print son.age            // 0
+print son.height         // 0
+print son.alive          // 0
+
+let greatson = !son.son
+// print greatson.name  // garbage or segfault :)
+// print greatson.age   // garbage or segfault :)
+
 return 0
-//
-//let n = p.name
-//let a = p.age
-//
-//print n
-//print a

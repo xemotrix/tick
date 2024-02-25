@@ -1,0 +1,30 @@
+type node {
+    value : int
+    next  : ref node
+}
+
+fun build_list(n: int) node {
+    if n == 0 {
+        return node{ value = 0 }
+    }
+    let child = build_list(n-1)
+    return node {
+        value = n
+        next = ref child
+    }
+}
+
+fun print_list(l: node) int {
+    // because I don't have a way yet to check nulls :)
+    if l.value == 0 {
+        return 0
+    }
+
+    print l.value
+    return print_list(!l.next)
+}
+
+let list = build_list(10)
+
+return print_list(list)
+
