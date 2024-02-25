@@ -10,9 +10,9 @@ fun concat(a: string, b: string) string {
 
 let s = get_string() ^ "\nconcat all the things"
 
-// \0 temporary, needed because for now we are using puts
-let s = concat(s, "\nthe end\0")
+let s = concat(s, "\nthe end")
 
-print s
+// \0 temporary, needed because for now we are using puts
+print s ^ "\0"
 
 return 0
