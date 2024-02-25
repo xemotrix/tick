@@ -24,7 +24,7 @@ fun print_list(l: node) int {
     return print_list(!l.next)
 }
 
-let list = build_list(10)
+let list = build_list(1000000)
 
 return print_list(list)
 
