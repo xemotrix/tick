@@ -5,7 +5,6 @@ fun get_string() string {
     //return "Hello, world!"
 }
 
-let s = get_string() ^ "what"
-let s = s ^ "thefuck"
+let s = get_string() ^ "\nconcat " ^ "all the things"
 print s
 return 0

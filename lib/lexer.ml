@@ -34,6 +34,18 @@ let get_iden (input : string) : string * string =
   iden, advance_n input (String.length iden)
 ;;
 
+let sanitize_string (s : string) : string =
+  let rec san acc s =
+    match s with
+    | '\\' :: 'n' :: rest -> san ('\n' :: acc) rest
+    | '\\' :: 'r' :: rest -> san ('\r' :: acc) rest
+    | '\\' :: 't' :: rest -> san ('\t' :: acc) rest
+    | c :: rest -> san (c :: acc) rest
+    | [] -> List.rev acc |> String.of_char_list
+  in
+  String.to_list s |> san []
+;;
+
 let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
   let module S = String in
   if S.is_empty input
@@ -81,7 +93,9 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
          S.take_while (S.drop_prefix input 1) ~f:(fun c -> not @@ Char.equal c '"')
        in
        (match S.get input (S.length str + 1) with
-        | '"' -> advance_n input (S.length str + 2), StringLiteral str :: tokens
+        | '"' ->
+          ( advance_n input (S.length str + 2)
+          , StringLiteral (sanitize_string str) :: tokens )
         | _ -> failwith "Invalid string literal")
      | c when Char.is_digit c ->
        (match lex_number input with

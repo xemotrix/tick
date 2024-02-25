@@ -1,14 +1,14 @@
 build:
-	@dune build
+	dune build
+	cp -f ./_build/default/bin/main.exe tick
 
-build_bin:
-	@./scripts/build_bin.sh
+compile: build
+	./tick examples/$(EX).tick
+	llc -filetype=asm output.ll # for debugging
+	llc -filetype=obj output.ll -o output.o
+	clang output.o -o output
+	@rm output.o
 
-build_fibonacci: build
-	@./_build/default/bin/main.exe examples/fibonacci.tick
-
-run_fibonacci: build_fibonacci build_bin
-	@./output
-
-build_asm:
-	@llc output.ll -filetype=asm
+run: compile
+	@printf "\n"
+	./output

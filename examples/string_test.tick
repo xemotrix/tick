@@ -1,0 +1,13 @@
+
+fun foo() string {
+    return "some string"
+}
+
+fun bar() string {
+    return "this is other string"
+}
+
+let a = foo()
+let x = bar()
+
+print(a)

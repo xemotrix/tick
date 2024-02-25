@@ -64,7 +64,7 @@ let float_literal : Ast.value Parser.t = function
 ;;
 
 let string_literal : Ast.value Parser.t = function
-  | Token.StringLiteral s :: rest -> Some (Ast.StringLiteral s, rest)
+  | Token.StringLiteral s :: rest -> Some (Ast.StringLiteral (s), rest)
   | _ -> None
 ;;
 
