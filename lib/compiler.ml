@@ -149,7 +149,7 @@ let init_printers builder =
   print_int := build_global_stringptr "%d\n" "int_printer" builder;
   print_i8 := build_global_stringptr "'%d'\n" "i8_printer" builder;
   print_float := build_global_stringptr "%f\n" "float_printer" builder;
-  print_ptr := build_global_stringptr "&(%p)\n" "ptr_printer" builder
+  print_ptr := build_global_stringptr "&(%p):" "ptr_printer" builder
 ;;
 
 (* puts *)
@@ -165,8 +165,13 @@ let malloc_ty = function_type char_ptr_type [| int_type |]
 let malloc = declare_function "malloc" malloc_ty the_module
 
 (* free *)
-(* let free_ty = function_type void [| char_ptr_type |] *)
-(* let free = declare_function "free" free_ty the_module *)
+let free_ty = function_type void [| char_ptr_type |]
+let free = declare_function "free" free_ty the_module
+
+let freeval (c : Compiler.t) v =
+  let ptr = build_bitcast v char_ptr_type "" c.builder in
+  build_call free [| ptr |] "" the_builder |> ignore
+;;
 
 (* write IR to file *)
 let write_ir modu =
@@ -221,6 +226,25 @@ and compile_if' (c : Compiler.t) if_blocks maybe_else end_bb =
     build_br end_bb c.builder |> ignore;
     null_value
 
+and compile_print (c : Compiler.t) value v_t =
+  match v_t with
+  | Int | Bool | Char -> build_call printf [| !print_int; value |] "" c.builder
+  | Float -> build_call printf [| !print_float; value |] "" c.builder
+  | String ->
+    let stack_ptr = build_alloca string_type "" c.builder in
+    build_store value stack_ptr c.builder |> ignore;
+    let char_ptr_ptr = build_struct_gep stack_ptr 0 "" c.builder in
+    let char_ptr = build_load char_ptr_ptr "" c.builder in
+    let first_char = build_gep char_ptr [| const_int int_type 0 |] "" c.builder in
+    build_call puts [| first_char |] "" c.builder
+  | Struct struct_name ->
+    let str = build_global_stringptr (struct_name ^ "{todo fields}") "" c.builder in
+    build_call puts [| str |] "" c.builder
+  | Pointer inner_ty ->
+    build_call printf [| !print_ptr; value |] "" c.builder |> ignore;
+    let inner = build_load value "" c.builder in
+    compile_print c inner inner_ty
+
 and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
   match stmt with
   | Ast.Assign (name, expr) ->
@@ -229,23 +253,7 @@ and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
     Compiler.add_symbol c name value v_t
   | Ast.Print expr ->
     let value, v_t = compile_expr c expr in
-    (match v_t with
-     | Int | Bool | Char -> build_call printf [| !print_int; value |] "" c.builder
-     | Float -> build_call printf [| !print_float; value |] "" c.builder
-     | String ->
-       let stack_ptr = build_alloca string_type "" c.builder in
-       build_store value stack_ptr c.builder |> ignore;
-       let char_ptr_ptr = build_struct_gep stack_ptr 0 "" c.builder in
-       let char_ptr = build_load char_ptr_ptr "" c.builder in
-       let first_char = build_gep char_ptr [| const_int int_type 0 |] "" c.builder in
-       build_call puts [| first_char |] "" c.builder
-     | Struct struct_name ->
-       let str = build_global_stringptr (struct_name ^ "{todo fields}") "" c.builder in
-       build_call puts [| str |] "" c.builder
-     | Pointer _ ->
-       Printf.printf "pointer type: %s\n" (Sexp.to_string_hum (sexp_of_type' v_t));
-       build_call printf [| !print_ptr; value |] "" c.builder)
-    |> ignore;
+    compile_print c value v_t |> ignore;
     c
   | Ast.If (if_blocks, maybe_else) -> compile_if c if_blocks maybe_else
   | Ast.Return expr ->
@@ -253,7 +261,8 @@ and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
     build_ret value c.builder |> ignore;
     c
   | Ast.FunDef (name, args, ret_t, body) ->
-    compile_block (get_fundef_compiler c name args ret_t) body |> ignore;
+    let fun_c = get_fundef_compiler c name args ret_t in
+    compile_block fun_c body |> ignore;
     c
   | Ast.TypeDef (type_name, members) ->
     let ty = named_struct_type the_context type_name in
@@ -321,7 +330,7 @@ and return_type op typ =
   | Concat -> String
 
 and compile_string_concat (c : Compiler.t) lhs_val rhs_val =
-  let concat_fn = Llvm.lookup_function "builtin.concat.string" the_module in
+  let concat_fn = lookup_function "builtin.concat.string" the_module in
   let concat_fn = Option.value_exn concat_fn in
   build_call concat_fn [| lhs_val; rhs_val |] "str_concat" c.builder, String
 
@@ -385,12 +394,12 @@ and compile_expr (c : Compiler.t) (expr : Ast.expression) : llvalue * type' =
      | _ -> failwith "type error: cannot dereference non-pointer type")
   | Ast.FunCall (name, args) ->
     let v, t = compile_funcall c name args in
-    Llvm.set_value_name (name ^ ".res") v;
+    set_value_name (name ^ ".res") v;
     v, t
   | Ast.Value valu -> compile_value c valu
 
 and compile_funcall (c : Compiler.t) name args : llvalue * type' =
-  match Llvm.lookup_function name the_module, Compiler.get_fun_t c name with
+  match lookup_function name the_module, Compiler.get_fun_t c name with
   | Some f, Some t ->
     if equal (params f |> Array.length) (List.length args)
     then (
@@ -434,7 +443,8 @@ and compile_value (c : Compiler.t) (value : Ast.value) : llvalue * type' =
 (* Built-in functions *)
 and init_builtin_functions c =
   builtin_create_string_literal c;
-  builtin_concat_strings c
+  builtin_concat_strings c;
+  Compiler.add_fun_t c "puts" Int
 
 and builtin_create_string_literal c =
   let c =

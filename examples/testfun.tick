@@ -1,0 +1,11 @@
+fun sum(a: int, b: int) int {
+    let s = a + b
+    return s
+}
+
+let res = sum(1, 2)
+print res
+
+return 0
+
+

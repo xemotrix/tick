@@ -2,7 +2,10 @@ fun get_string() string {
     let a = "some cool "
     let b = "string! 🥹"
     return a^b
-    //return "Hello, world!"
+}
+
+fun concat(a string b string) {
+    return a ^ b
 }
 
 let s = get_string() ^ "\nconcat " ^ "all the things"
