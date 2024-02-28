@@ -231,12 +231,8 @@ and compile_print (c : Compiler.t) value v_t =
   | Int | Bool | Char -> build_call printf [| !print_int; value |] "" c.builder
   | Float -> build_call printf [| !print_float; value |] "" c.builder
   | String ->
-    let stack_ptr = build_alloca string_type "" c.builder in
-    build_store value stack_ptr c.builder |> ignore;
-    let char_ptr_ptr = build_struct_gep stack_ptr 0 "" c.builder in
-    let char_ptr = build_load char_ptr_ptr "" c.builder in
-    let first_char = build_gep char_ptr [| const_int int_type 0 |] "" c.builder in
-    build_call puts [| first_char |] "" c.builder
+    let char_ptr = build_extractvalue value 0 "" c.builder in
+    build_call puts [| char_ptr |] "" c.builder
   | Struct struct_name ->
     let str = build_global_stringptr (struct_name ^ "{todo fields}") "" c.builder in
     build_call puts [| str |] "" c.builder
@@ -257,8 +253,8 @@ and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
     c
   | Ast.If (if_blocks, maybe_else) -> compile_if c if_blocks maybe_else
   | Ast.Return expr ->
-    let value, _v_t = compile_expr c expr in
-    build_ret value c.builder |> ignore;
+    let llval, _ = compile_expr c expr in
+    build_ret llval c.builder |> ignore;
     c
   | Ast.FunDef (name, args, ret_t, body) ->
     let fun_c = get_fundef_compiler c name args ret_t in
@@ -291,7 +287,7 @@ and get_fundef_compiler c name args ret_t =
   |> Array.fold
        ~init:(Compiler.new_compiler_from c builder)
        ~f:(fun acc_c ((arg_name, arg_t), param) ->
-         set_value_name arg_name param;
+         set_value_name ("arg." ^ arg_name) param;
          Compiler.add_symbol acc_c arg_name param (type_of_ast_type arg_t))
 
 and get_num_instruction op typ =
@@ -372,22 +368,19 @@ and compile_expr (c : Compiler.t) (expr : Ast.expression) : llvalue * type' =
     compile_binop c (compile_expr c lhs) (binop_expr_to_op op) (compile_expr c rhs)
   | Ast.Access (expr, member) ->
     (match compile_expr c expr with
-     | v, Struct struct_name ->
+     | llval, Struct struct_name ->
        let idx = Compiler.get_struct_field_idx c struct_name member in
-       let ty, members = Compiler.get_struct c struct_name in
-       let stack_ptr = build_alloca ty "" c.builder in
-       build_store v stack_ptr c.builder |> ignore;
-       let field_ptr =
-         build_struct_gep stack_ptr idx (struct_name ^ "." ^ member) c.builder
-       in
-       build_load field_ptr "" c.builder, snd @@ List.nth_exn members idx
+       let field_val = build_extractvalue llval idx ("struct_name." ^ member) c.builder in
+       let _, members = Compiler.get_struct c struct_name in
+       field_val, snd @@ List.nth_exn members idx
      | _ -> failwith "type error: cannot access member of non-struct type")
   | Ast.(UnOp (Ref, e)) ->
     let fv, ft = compile_expr c e in
-    let ptr_ty = Pointer ft in
     let malloc = build_malloc (map_type c ft) "" c.builder in
-    build_store fv malloc c.builder |> ignore;
-    malloc, ptr_ty
+    (match ft with
+     | Struct _ -> build_store fv malloc c.builder |> ignore
+     | _ -> build_store fv malloc c.builder |> ignore);
+    malloc, Pointer ft
   | Ast.(UnOp (Deref, e)) ->
     (match compile_expr c e with
      | v, Pointer t -> build_load v "" c.builder, t
@@ -437,8 +430,8 @@ and compile_value (c : Compiler.t) (value : Ast.value) : llvalue * type' =
       let idx = Compiler.get_struct_field_idx c type_name field in
       let field_ptr = build_struct_gep stack_ptr idx "" c.builder in
       build_store value field_ptr c.builder |> ignore);
-    let ret = build_load stack_ptr "" c.builder in
-    ret, Struct type_name
+    let reg_struct = build_load stack_ptr "" c.builder in
+    reg_struct, Struct type_name
 
 (* Built-in functions *)
 and init_builtin_functions c =
@@ -454,21 +447,12 @@ and builtin_create_string_literal c =
       [ "str_ptr", Ast.Pointer Ast.Char; "len", Ast.Int ]
       Ast.String
   in
-  (* create string literal code gen *)
   let strptr, _ = Option.value_exn @@ Compiler.find_value c "str_ptr" in
   let lllen, _ = Option.value_exn @@ Compiler.find_value c "len" in
-  (* build string struct *)
-  let string_stack_ptr = build_alloca string_type ".string" c.builder in
-  let arr_ptr = build_struct_gep string_stack_ptr 0 ".string.ptr" c.builder in
-  let len_ptr = build_struct_gep string_stack_ptr 1 ".string.len" c.builder in
-  let cap_ptr = build_struct_gep string_stack_ptr 2 ".string.cap" c.builder in
-  (* store stuff in stack struct *)
-  build_store strptr arr_ptr c.builder |> ignore;
-  build_store lllen len_ptr c.builder |> ignore;
-  build_store lllen cap_ptr c.builder |> ignore;
-  (* load struct from stack to return *)
-  let ret = build_load string_stack_ptr ".string.struct" c.builder in
-  build_ret ret c.builder |> ignore
+  let const_str = build_insertvalue (const_null string_type) strptr 0 "" c.builder in
+  let const_str = build_insertvalue const_str lllen 1 "" c.builder in
+  let const_str = build_insertvalue const_str lllen 2 "" c.builder in
+  build_ret const_str c.builder |> ignore
 
 and builtin_concat_strings c =
   let c =
@@ -478,40 +462,19 @@ and builtin_concat_strings c =
       [ "lhs", Ast.String; "rhs", Ast.String ]
       Ast.String
   in
-  (* concat strings code gen *)
-  let lhs_val, _ = Option.value_exn @@ Compiler.find_value c "lhs" in
-  let rhs_val, _ = Option.value_exn @@ Compiler.find_value c "rhs" in
-  (* store lhs and rhs in stack *)
-  let lhs = build_alloca string_type "" c.builder in
-  let rhs = build_alloca string_type "" c.builder in
-  build_store lhs_val lhs c.builder |> ignore;
-  build_store rhs_val rhs c.builder |> ignore;
-  (* calculate length of new string and allocate space in heap *)
-  let len_lhs' = build_struct_gep lhs 1 "" c.builder in
-  let len_lhs = build_load len_lhs' "len_lhs" c.builder in
-  let len_rhs' = build_struct_gep rhs 1 "" c.builder in
-  let len_rhs = build_load len_rhs' "len_rhs" c.builder in
+  let lhs, _ = Option.value_exn @@ Compiler.find_value c "lhs" in
+  let rhs, _ = Option.value_exn @@ Compiler.find_value c "rhs" in
+  let len_lhs = build_extractvalue lhs 1 "" c.builder in
+  let len_rhs = build_extractvalue rhs 1 "" c.builder in
   let total_len = build_add len_lhs len_rhs "tot_len" c.builder in
   let heap = build_array_malloc char_type total_len ".string.heap_array" c.builder in
-  (* copy lhs to heap *)
-  let lhs_ptr' = build_struct_gep lhs 0 "" c.builder in
-  let lhs_ptr = build_load lhs_ptr' "lhs_ptr" c.builder in
+  let lhs_ptr = build_extractvalue lhs 0 "" c.builder in
   build_call memcpy [| heap; lhs_ptr; len_lhs |] "" c.builder |> ignore;
-  (* copy rhs to heap *)
-  let rhs_ptr' = build_struct_gep rhs 0 "" c.builder in
-  let rhs_ptr = build_load rhs_ptr' "rhs_ptr" c.builder in
+  let rhs_ptr = build_extractvalue rhs 0 "" c.builder in
   let rhs_start = build_gep heap [| len_lhs |] "rhs_start" c.builder in
   build_call memcpy [| rhs_start; rhs_ptr; len_rhs |] "" c.builder |> ignore;
-  (* build string struct (stack) *)
-  let string_stack_ptr = build_alloca string_type ".string" c.builder in
-  let arr_ptr = build_struct_gep string_stack_ptr 0 ".string.ptr" c.builder in
-  let len_ptr = build_struct_gep string_stack_ptr 1 ".string.len" c.builder in
-  let cap_ptr = build_struct_gep string_stack_ptr 2 ".string.cap" c.builder in
-  (* store stuff in stack struct *)
-  build_store heap arr_ptr c.builder |> ignore;
-  build_store total_len len_ptr c.builder |> ignore;
-  build_store total_len cap_ptr c.builder |> ignore;
-  (* load struct from stack to return *)
-  let ret = build_load string_stack_ptr ".string.struct" c.builder in
+  let ret = build_insertvalue (const_null string_type) heap 0 "" c.builder in
+  let ret = build_insertvalue ret total_len 1 "" c.builder in
+  let ret = build_insertvalue ret total_len 2 "" c.builder in
   build_ret ret c.builder |> ignore
 ;;
