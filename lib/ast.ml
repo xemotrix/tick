@@ -7,8 +7,7 @@ type type' =
   | String
   | Char
   | Pointer of type'
-  (* | Struct of string * (string * type') list *)
-  | Struct of string 
+  | Struct of string
 [@@deriving show, sexp, eq]
 
 and value =
@@ -49,7 +48,8 @@ and expression =
 [@@deriving show, sexp, eq]
 
 and statement =
-  | Assign of string * expression
+  | Declaration of string * expression
+  | Assign of expression * expression
   | FunDef of string * (string * type') list * type' * block
   | TypeDef of string * (string * type') list
   | If of (expression * block) list * block option

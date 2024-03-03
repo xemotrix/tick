@@ -1,0 +1,14 @@
+type person {
+    name : string
+    son : ref person
+}
+
+let jeff = person {
+    name = "jeff"
+}
+
+let x = !(jeff.son).name
+
+// jeff.name = "lol"
+
+return 0

@@ -245,10 +245,17 @@ and precexpr prec =
      | TopPrecedence -> zero)
     <|> precexpr (prev_prec prec)
 
-and assign ts =
+and declaration ts =
   ts
   |>
   let* id = ~$Token.Let >>> identifier in
+  let* e = ~$Token.Equals >>> expr in
+  return @@ Ast.Declaration (id, e)
+
+and assign ts =
+  ts
+  |>
+  let* id = expr in
   let* e = ~$Token.Equals >>> expr in
   return @@ Ast.Assign (id, e)
 
@@ -311,7 +318,9 @@ and return' ts =
   let* e = ~$Token.Return >>> expr in
   return @@ Ast.Return e
 
-and stmt ts = ts |> (assign <|> fundef <|> typedef <|> print <|> if' <|> return')
+and stmt ts =
+  ts |> (declaration <|> assign <|> fundef <|> typedef <|> print <|> if' <|> return')
+
 and block ts = ts |> (some stmt >>| fun ss -> Ast.Block ss)
 
 let parse = block

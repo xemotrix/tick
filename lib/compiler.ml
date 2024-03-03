@@ -243,10 +243,23 @@ and compile_print (c : Compiler.t) value v_t =
 
 and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
   match stmt with
-  | Ast.Assign (name, expr) ->
+  | Ast.Declaration (name, expr) ->
     let value, v_t = compile_expr c expr in
     set_value_name ("var." ^ name) value;
     Compiler.add_symbol c name value v_t
+  | Ast.Assign (name_expr, expr) ->
+    (match name_expr with
+     | Ast.(Value (Var name)) ->
+       (match Compiler.find_value c name with
+        | None -> failwith @@ Printf.sprintf "unknown variable name: '%s'" name
+        | Some (_, t) ->
+          let value, v_t = compile_expr c expr in
+          if equal_type' t v_t
+          then (
+            set_value_name ("var." ^ name) value;
+            Compiler.add_symbol c name value v_t)
+          else failwith "type error: cannot assign to variable of different type")
+     | _ -> failwith "can't assign to non-variable")
   | Ast.Print expr ->
     let value, v_t = compile_expr c expr in
     compile_print c value v_t |> ignore;
