@@ -76,73 +76,18 @@ module Combinators = struct
      return @@ Some x)
     <|> return None
   ;;
+
+  let to_list (p : 'a option Parser.t) =
+    match%bind p with
+    | Some x -> return [ x ]
+    | None -> return []
+  ;;
 end
 
 open Combinators
 
 (* Tick parsing *)
 (* ------------ *)
-let int_literal : Ast.value Parser.t = function
-  | Token.IntLiteral n :: rest -> Some (Ast.ILiteral n, rest)
-  | _ -> None
-;;
-
-let float_literal : Ast.value Parser.t = function
-  | Token.FloatLiteral n :: rest -> Some (Ast.FPLiteral n, rest)
-  | _ -> None
-;;
-
-let string_literal : Ast.value Parser.t = function
-  | Token.StringLiteral s :: rest -> Some (Ast.StringLiteral s, rest)
-  | _ -> None
-;;
-
-let bool_literal : Ast.value Parser.t = function
-  | Token.True :: rest -> Some (Ast.BoolLiteral true, rest)
-  | Token.False :: rest -> Some (Ast.BoolLiteral false, rest)
-  | _ -> None
-;;
-
-let identifier : string Parser.t = function
-  | Token.Identifier s :: rest -> Some (s, rest)
-  | _ -> None
-;;
-
-let rec type' : Ast.type' Parser.t = function
-  | Token.Int :: rest -> Some (Ast.Int, rest)
-  | Token.Float :: rest -> Some (Ast.Float, rest)
-  | Token.Bool :: rest -> Some (Ast.Bool, rest)
-  | Token.String :: rest -> Some (Ast.String, rest)
-  | Token.Identifier s :: rest -> Some (Ast.Struct s, rest)
-  | Token.Ref :: rest ->
-    let x =
-      match type' rest with
-      | Some (t, rest') -> Some (Ast.Pointer t, rest')
-      | None -> None
-    in
-    x
-  | _ -> None
-;;
-
-let token_of_binop = function
-  | Ast.Mul -> Token.Times
-  | Ast.Div -> Token.Divide
-  | Ast.Modulo -> Token.Modulo
-  | Ast.Concat -> Token.StrConcat
-  | Ast.Add -> Token.Plus
-  | Ast.Sub -> Token.Minus
-  | Ast.Lt -> Token.Less
-  | Ast.Gt -> Token.Greater
-  | Ast.Eq -> Token.EqualsEq
-  | Ast.LogAnd -> Token.LogAnd
-  | Ast.LogXor -> Token.LogXor
-  | Ast.LogOr -> Token.LogOr
-;;
-
-let token_of_unop = function
-  | Ast.Ref -> Token.Ref
-  | Ast.Deref -> Token.Deref
-;;
 
 type assoc =
   | Left
@@ -161,19 +106,103 @@ type precedence =
   | TopPrecedence
 [@@deriving sexp, eq, ord, enum]
 
-let prev_prec p =
+let rec int_literal : Ast.value Parser.t = function
+  | Token.IntLiteral n :: rest -> Some (Ast.ILiteral n, rest)
+  | _ -> None
+
+and float_literal : Ast.value Parser.t = function
+  | Token.FloatLiteral n :: rest -> Some (Ast.FPLiteral n, rest)
+  | _ -> None
+
+and string_literal : Ast.value Parser.t = function
+  | Token.StringLiteral s :: rest -> Some (Ast.StringLiteral s, rest)
+  | _ -> None
+
+and bool_literal : Ast.value Parser.t = function
+  | Token.True :: rest -> Some (Ast.BoolLiteral true, rest)
+  | Token.False :: rest -> Some (Ast.BoolLiteral false, rest)
+  | _ -> None
+
+and identifier : string Parser.t = function
+  | Token.Identifier s :: rest -> Some (s, rest)
+  | _ -> None
+
+and capIdentifier : string Parser.t = function
+  | Token.CapIdentifier s :: rest -> Some (s, rest)
+  | _ -> None
+
+and int_t = function
+  | Token.Int :: rest -> Some (Ast.Int, rest)
+  | _ -> None
+
+and float_t = function
+  | Token.Float :: rest -> Some (Ast.Float, rest)
+  | _ -> None
+
+and bool_t = function
+  | Token.Bool :: rest -> Some (Ast.Bool, rest)
+  | _ -> None
+
+and string_t = function
+  | Token.String :: rest -> Some (Ast.String, rest)
+  | _ -> None
+
+and struct_t = function
+  | Token.Identifier s :: rest -> Some (Ast.Struct s, rest)
+  | _ -> None
+
+and pointer_t = function
+  | Token.Ref :: rest ->
+    (match type' rest with
+     | Some (t, rest') -> Some (Ast.Pointer t, rest')
+     | None -> None)
+  | _ -> None
+
+and tuple_t ts =
+  ts
+  |>
+  let* types = ~$Token.LParen >>> some_comma_separated type' <<< ~$Token.RParen in
+  return @@ Ast.Tuple types
+
+and type' ts =
+  ts |> (int_t <|> float_t <|> bool_t <|> string_t <|> struct_t <|> pointer_t <|> tuple_t)
+
+and token_of_binop = function
+  | Ast.Mul -> Token.Times
+  | Ast.Div -> Token.Divide
+  | Ast.Modulo -> Token.Modulo
+  | Ast.Concat -> Token.StrConcat
+  | Ast.Add -> Token.Plus
+  | Ast.Sub -> Token.Minus
+  | Ast.Lt -> Token.Less
+  | Ast.Gt -> Token.Greater
+  | Ast.Eq -> Token.EqualsEq
+  | Ast.LogAnd -> Token.LogAnd
+  | Ast.LogXor -> Token.LogXor
+  | Ast.LogOr -> Token.LogOr
+
+and token_of_unop = function
+  | Ast.Ref -> Token.Ref
+  | Ast.Deref -> Token.Deref
+
+and prev_prec p =
   let open Option.Let_syntax in
   let%bind p = p in
   precedence_to_enum p |> Int.pred |> precedence_of_enum
-;;
 
-let rec field_assign ts =
+and field_assign ts =
   ts
   |>
   let* id = identifier in
   let* _ = ~$Token.Equals in
   let* e = expr in
   return (id, e)
+
+and tuple_literal ts =
+  ts
+  |>
+  let* es = ~$Token.LParen >>> some_comma_separated expr <<< ~$Token.RParen in
+  return @@ Ast.TupleLiteral es
 
 and struct_literal ts =
   ts
@@ -189,6 +218,7 @@ and value ts =
       <|> float_literal
       <|> string_literal
       <|> struct_literal
+      <|> tuple_literal
       <|> (identifier >>| fun id -> Ast.Var id)
       >>| fun v -> Ast.Value v)
 
@@ -282,6 +312,18 @@ and typedef ts =
   let* fields = ~$Token.LBrace >>> some typed_iden <<< ~$Token.RBrace in
   return @@ Ast.TypeDef (id, fields)
 
+and enumdef ts =
+  ts
+  |>
+  let* id = ~$Token.Enum >>> identifier in
+  let variant =
+    let* name = capIdentifier in
+    let* typ = maybe type' in
+    return (name, typ)
+  in
+  let* fields = ~$Token.LBrace >>> some variant <<< ~$Token.RBrace in
+  return @@ Ast.EnumDef (id, fields)
+
 and print ts =
   ts
   |>
@@ -319,7 +361,15 @@ and return' ts =
   return @@ Ast.Return e
 
 and stmt ts =
-  ts |> (declaration <|> assign <|> fundef <|> typedef <|> print <|> if' <|> return')
+  ts
+  |> (declaration
+      <|> assign
+      <|> fundef
+      <|> enumdef
+      <|> typedef
+      <|> print
+      <|> if'
+      <|> return')
 
 and block ts = ts |> (some stmt >>| fun ss -> Ast.Block ss)
 

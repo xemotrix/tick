@@ -19,6 +19,7 @@ let rec type_of_ast_type = function
   | Ast.Char -> Char
   | Ast.Pointer t -> Pointer (type_of_ast_type t)
   | Ast.Struct name -> Struct name
+  | Ast.Tuple _ -> failwith "todo tuple"
 ;;
 
 (* symbol table *)
@@ -282,6 +283,7 @@ and compile_stmt (c : Compiler.t) (stmt : Ast.statement) : Compiler.t =
     Compiler.set_struct_fields c type_name members;
     struct_set_body ty member_lltypes false;
     c
+  | Ast.EnumDef _ -> failwith "todo enumdef"
 
 and get_fundef_compiler c name args ret_t =
   let ret_t = type_of_ast_type ret_t in
@@ -450,6 +452,7 @@ and compile_value (c : Compiler.t) (value : Ast.value) : llvalue * type' =
       build_store value field_ptr c.builder |> ignore);
     let reg_struct = build_load ty stack_ptr "" c.builder in
     reg_struct, Struct type_name
+  | Ast.TupleLiteral _ -> failwith "todo tuple literal"
 
 (* Built-in functions *)
 and init_builtin_functions c =

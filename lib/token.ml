@@ -7,6 +7,7 @@ type t =
   | Extern
   | Return
   | Type
+  | Enum
   | If
   | Else
   | True
@@ -48,6 +49,7 @@ type t =
   | Deref
   (* Values *)
   | Identifier of string
+  | CapIdentifier of string
   | IntLiteral of int
   | FloatLiteral of float
   | StringLiteral of string

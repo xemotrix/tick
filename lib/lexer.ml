@@ -107,6 +107,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
         | "and", rest -> rest, LogAnd :: tokens
         | "bool", rest -> rest, Bool :: tokens
         | "else", rest -> rest, Else :: tokens
+        | "enum", rest -> rest, Enum :: tokens
         | "extern", rest -> rest, Extern :: tokens
         | "false", rest -> rest, False :: tokens
         | "float", rest -> rest, Float :: tokens
@@ -122,6 +123,7 @@ let rec lex' ((input, tokens) : string * Token.t list) : Token.t list * string =
         | "true", rest -> rest, True :: tokens
         | "type", rest -> rest, Type :: tokens
         | "xor", rest -> rest, LogXor :: tokens
+        | iden, rest when Char.is_uppercase c -> rest, CapIdentifier iden :: tokens
         | iden, rest -> rest, Identifier iden :: tokens)
      | _ -> failwith @@ Printf.sprintf "Unknown token: '%s'" input)
     |> lex'

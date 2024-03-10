@@ -8,6 +8,7 @@ type type' =
   | Char
   | Pointer of type'
   | Struct of string
+  | Tuple of type' list
 [@@deriving show, sexp, eq]
 
 and value =
@@ -17,6 +18,7 @@ and value =
   | BoolLiteral of bool
   | StringLiteral of string
   | StructLiteral of string * (string * expression) list
+  | TupleLiteral of expression list
 [@@deriving show, sexp, eq]
 
 and binop =
@@ -52,6 +54,7 @@ and statement =
   | Assign of expression * expression
   | FunDef of string * (string * type') list * type' * block
   | TypeDef of string * (string * type') list
+  | EnumDef of string * (string * type' option) list
   | If of (expression * block) list * block option
   | Return of expression
   | Print of expression
